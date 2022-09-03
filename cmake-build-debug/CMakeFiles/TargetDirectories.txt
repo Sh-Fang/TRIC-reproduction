@@ -1,3 +1,0 @@
-E:/GraphQuery C++/cmake-build-debug/CMakeFiles/rebuild_cache.dir
-E:/GraphQuery C++/cmake-build-debug/CMakeFiles/GraphQuery_C__.dir
-E:/GraphQuery C++/cmake-build-debug/CMakeFiles/edit_cache.dir
