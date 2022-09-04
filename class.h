@@ -6,6 +6,7 @@
 #include <iostream>
 #include <vector>   //向量库
 #include <unordered_map>  //无序哈希表map
+#include <map>
 #include <utility>  //pair库
 using namespace std;
 //**************使用到的库*********************************************

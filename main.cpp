@@ -8,6 +8,7 @@ using namespace std;
 
 //*****************************************************************
 vector<vertex_G_Node> G;   //初始化数据图:G用向量存
+unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应关系(key是V_id)
 vector<vertex_Q_Node> Q;   //初始化多重查询图
 
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
@@ -16,6 +17,9 @@ unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
 unordered_map<int,vector<EdgePairNode*>> queryInd;  //key是Qid，value是节点的指针向量
 
+map<pair<int,int>,vector<EdgePairNode*>> edgeInd;   //无序map不能使用pair作为key，而有序map可以
+                                                    //key是label_pair，value是对应的节点的连接
+map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 //*****************************************************************
 
 
@@ -50,6 +54,13 @@ void inputG(const string& path_of_data_graph){
             G[id2].add_G_neighbor(id1);  //因为是无向图，所以要存两次
         }
     }
+
+
+    //建立G中所有节点v_label和v_id的对应关系
+    for(auto & it : G){   //遍历G的所有节点
+        G_Vid_Vlabel[it.id] = it.label;
+    }
+
 
     cout << "Data Graph Loading Successfully" << endl;
 }
@@ -310,19 +321,123 @@ void create_queryInd(){
 }
 
 
+//****************************************************************
+//N叉树的遍历(递归遍历，建立T与e的索引连接)
+void create_T_e_index(EdgePairNode *root){
+    if(root->child.empty()){   //处理那些一棵树上只有一个节点的树
+        edgeInd[root->label_pair].push_back(root);
+        return;
+    }
+
+    //剩下的就是那些长度大于1的树
+    edgeInd[root->label_pair].push_back(root);   //因为是递归遍历，所以第一步就是把当前节点保存一下
+    vector<EdgePairNode *> p = root->child;   //获取所有的孩子节点
+
+    for(auto i = 0 ; i < p.size() ; i++){    //遍历所有的孩子节点
+        if(!p[i]->child.empty()){      //如果p[i]下面还有孩子
+            create_T_e_index(p[i]);   //继续递归遍历
+        } else{                        //如果p[i]已经是叶节点了
+            edgeInd[p[i]->label_pair].push_back(p[i]);
+        }
+    }
+
+}
+
+
+
+//建立edgeInd索引
+void create_edgeInd(){
+    for(auto it = PTrees.begin() ; it != PTrees.end() ; it++){   //遍历每棵树
+        create_T_e_index((*it).second.head);
+    }
+
+    cout << "EdgeInd Create Successfully" <<endl;
+}
+
+
+//****************************************************************
+//对初始数据图建立MatV视图
+void create_G_matV(){
+    for(auto it = edgeInd.begin() ; it != edgeInd.end() ; it++){
+        for(auto j = 0 ; j < G.size() ; j++){
+            if((*it).first.first == G[j].label){   //注意：it里面所有的值是label_id，不是v_id
+                for(auto k = G[j].neighbor.begin() ; k != G[j].neighbor.end() ; k++){   //遍历G[j]所有的邻居
+                    if((*it).first.second == G_Vid_Vlabel[(*k)]){  //查询G_Vid_Vlabel表，找出*k对应的lebel
+                        pair<int,int> temp = {G[j].id,(*k)};   //因为*k是G[j].neighbor，也就是v_id，所以存的时候，temp的第二个参数是(*k)，而不是G[j].neighbor[*k]
+                        G_matV[(*it).first].push_back(temp);
+                    }
+                }
+            }
+        }
+    }
+
+    cout << "G_matV Create Successfully" <<endl;
+}
+
+
+
+//****************************************************************
+//找出受更新流影响的边的查询Qids（可能有多个Qid受更新的影响）
+void find_affected_Q(pair<int,int> label_pair){
+    vector<int> affectedQids;
+    auto it = edgeInd.find(label_pair);
+    if(it != edgeInd.end()){   //说明在edgeInd中找到了与之相同的节点
+        for(auto & j :(*it).second){   //遍历(*it).second，也就是vector<EdgePairNode *>
+            for(auto & k:(*j).Q_id_ptr){
+                affectedQids.push_back(k);
+                cout << "Affected Qid : " << k ;
+            }
+        }
+    }
+    cout << endl;
+}
+
+
+
+//****************************************************************
+//加入更新流，并更新G_matV
+void update_G_matV(pair<int,int> new_pair){   //stream的格式是"e 5 7 0"，所以pair里面是v_id
+    pair<int,int> label_pair = {G_Vid_Vlabel[new_pair.first],G_Vid_Vlabel[new_pair.second]};
+    G_matV[label_pair].push_back(new_pair);
+
+    cout << "Update Successfully : " << new_pair.first << " -> " << new_pair.second <<endl;
+
+    find_affected_Q(label_pair);
+}
+
+
+
+
+
+
+
 int main(){
+    cout << "########################################################" <<endl;
     string path_of_data_graph = "E:\\QueryC++\\data-graph.txt";
     string path_of_query_graph = "E:\\QueryC++\\multi-query.txt";
+
     inputG(path_of_data_graph);
     inputQ(path_of_query_graph);
+
+    cout << "********************************************************" <<endl;
 
     create_edge_pair_vector();  //创建边对向量
 
     create_Pi_chain();    //创建Pi链表
 
+    cout << "********************************************************" <<endl;
+
     create_rootInd();   //创建rootInd索引
 
     create_queryInd();
+
+    create_edgeInd();
+
+    create_G_matV();
+
+    cout << "********************************************************" <<endl;
+
+    update_G_matV({5,7});
 
     return 0;
 }
