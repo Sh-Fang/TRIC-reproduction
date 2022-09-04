@@ -14,6 +14,8 @@ vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面�
 vector<PiChain> P;   //存放所有Pi的向量（同一个Q_id的Pi存放在同一个向量里）
 unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
+unordered_map<int,vector<EdgePairNode*>> queryInd;  //key是Qid，value是节点的指针向量
+
 //*****************************************************************
 
 
@@ -140,7 +142,10 @@ void create_Pi_chain(){
                     Pc.add_node(Pairs[i]);   //把能连起来的边表保存
                     Pc.length = Pc.length+1;    //每添加一个节点，就让length加一
                     if(Pairs[j].second_node_out_degree == 0){  //如果最后一个点出度为0，那这个点就是最后一个点
-                        Pairs[j].Q_id_ptr.push_back(Pairs[j].Q_id);   //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
+                        auto it = find(Pairs[j].Q_id_ptr.begin(),Pairs[j].Q_id_ptr.end(),Pairs[j].Q_id);  //遍历查找向量中有没有与要插入的元素相同的元素
+                        if(it == Pairs[j].Q_id_ptr.end()){   //如果找不到，则插入元素
+                            Pairs[j].Q_id_ptr.push_back(Pairs[j].Q_id);   //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
+                        }
                         Pc.add_node(Pairs[j]);   //把最后这个节点保存再链表中
                         Pc.Q_id = Pairs[i].Q_id;   //保存好Q_id
                         Pc.length = Pc.length + 1;
@@ -156,7 +161,10 @@ void create_Pi_chain(){
                 //如果不能连起来，是单独的一个边对
                 if (Pairs[i].second_node_out_degree == 0 && Pairs[i].first_node_in_degree == 0) {   //防止多次保存不同Q的同名节点
                     PiChain Pc2;
-                    Pairs[i].Q_id_ptr.push_back(Pairs[i].Q_id);  //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
+                    auto it = find(Pairs[i].Q_id_ptr.begin(),Pairs[i].Q_id_ptr.end(),Pairs[i].Q_id);
+                    if(it == Pairs[i].Q_id_ptr.end()){
+                        Pairs[i].Q_id_ptr.push_back(Pairs[i].Q_id);  //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
+                    }
                     Pc2.add_node(Pairs[i]);
                     Pc2.Q_id = Pairs[i].Q_id;
                     Pc2.length = 1;
@@ -173,7 +181,7 @@ void create_Pi_chain(){
 
 
 
-//N叉树的遍历(递归遍历)
+//N叉树的遍历(递归遍历，为每个节点添加Nid)
 void add_Nid(EdgePairNode *root , int &next_N_id){
     root->node_id = next_N_id++;      //先给root节点加Nid
     vector<EdgePairNode *> p = root->child;    //【还可以这样】让p一次性指向root所有的孩子节点
@@ -263,6 +271,44 @@ void create_rootInd(){
 
 
 
+//****************************************************************
+//N叉树的遍历(递归遍历，建立Q与n的索引连接)
+void create_Q_n_index(EdgePairNode *root){
+    if(root == nullptr) return;
+
+    if(root->child.empty()){
+        auto it = find(queryInd[root->Q_id].begin(),queryInd[root->Q_id].end(),root);
+        if(it == queryInd[root->Q_id].end()){
+            queryInd[root->Q_id].push_back(root);
+        }
+
+    }
+    else{
+        vector<EdgePairNode *> p = root->child;
+        for(auto i = 0 ; i < p.size() ; i++){
+            if(!p[i]->Q_id_ptr.empty()){
+                for(auto j = 0 ; j < p[i]->Q_id_ptr.size() ; j++){
+                    queryInd[p[i]->Q_id_ptr[j]].push_back(p[i]);
+                }
+                create_Q_n_index(p[i]);
+            } else{
+                create_Q_n_index(p[i]);
+            }
+        }
+    }
+
+}
+
+
+//建立queryInd索引
+void create_queryInd(){
+    for(auto it = PTrees.begin() ; it != PTrees.end() ; it++){   //遍历每棵树
+        create_Q_n_index((*it).second.head);
+    }
+
+    cout << "QueryInd Create Successfully" <<endl;
+}
+
 
 int main(){
     string path_of_data_graph = "E:\\QueryC++\\data-graph.txt";
@@ -276,6 +322,7 @@ int main(){
 
     create_rootInd();   //创建rootInd索引
 
+    create_queryInd();
 
     return 0;
 }
