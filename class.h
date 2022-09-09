@@ -43,7 +43,6 @@ public:
     int v_label;  //储存节点字母
     int v_id;  //节点id
     int Q_id,total_v_num;
-//    unordered_map<int,int> neighbor;  //key是邻居节点id，value是邻居节点label
     vector<int> neighbor_id; //存邻居节点id
     vector<int> neighbor_label; //存邻居节点label
 public:
@@ -59,7 +58,6 @@ public:
     }
 
     void add_Q_neighbor(int _v_id,int _v_label){   //添加邻居节点
-//        this->neighbor.insert(pair<int,int>(_v_id,_v_label));
         this->neighbor_id.push_back(_v_id);
         this->neighbor_label.push_back( _v_label);
     }
@@ -86,32 +84,10 @@ public:
         this->parent = nullptr;
         this->node_id = -1;
         this->Q_id = -1;
-//        this->child_count = 0;
-    }
-
-    void compose_edge(int edge1 , int edge2){
-        this->edge_pair.first = edge1;
-        this->edge_pair.second = edge2;
     }
 };
 
 
-
-
-//*****************************************************************
-
-class PiChainNode{   //链表表头节点    
-public:
-    int length;  //当前这条链表的长度
-    int Q_id;    //这条链表属于哪个Q
-    EdgePairNode *next;
-public:
-    PiChainNode(){     //初始化链表头
-        this->Q_id = -1;
-        this->length = -1;
-        this->next = nullptr;
-    }
-};
 
 
 
@@ -147,104 +123,3 @@ public:
     }
 };
 
-
-
-
-
-//*****************************************************************
-//class rootInd_Node{   //rootInd中的节点的定义
-//public:
-//    pair<int,int> directed_edge;
-//    int query_id;   //对应类型为t时候的第一个参数Q_id
-//    int child_id;   //由于使用的是N叉树，所以需要记录每个节点下面的孩子数
-//    int node_id;
-//    vector<rootInd_Node*> child;
-//    rootInd_Node *parent;   //使用双向树
-//};
-
-
-
-//*****************************************************************
-//int node_id = 0;  //使用全局变量，使得在T1,T2...的不同树中，n的序号能接上
-//
-//class rootInd_Tree {   //rootInd的树的定义
-//public:
-//    rootInd_Node *pre,*p,*head;
-//public:
-//
-//    rootInd_Tree(){  //初始化构造函数
-//        pre = p = head = nullptr;
-//    }
-//
-//    void add_Node(rootInd_Node *node){
-//        p = node;
-//        if(head == nullptr){   //如果是该树的第一个节点
-//            head->child[p->child_id++] = p;   //每次添加一个孩子后，把child_id加一
-//            p->node_id = node_id++;    //把n保存到该节点里面
-//            pre = p;
-//        } else{
-//            p->parent = pre;  //此时pre停在上一个节点那里
-//            pre->child[p->child_id++] = p;
-//            p->node_id = node_id++;    //把n保存到该节点里面
-//            pre = p;
-//        }
-//
-//        cout << "Adding Node Successfully" << endl;
-//
-//    }
-//
-////	void del_Node(int node_id){  //使用全树唯一的node_id来确认节点
-////		//TODO:是否需要这个删除节点的操作
-////	}
-//};
-
-
-
-
-//*****************************************************************
-class PiTreeNode{
-public:
-    EdgePairNode *node;
-    vector<PiTreeNode*> child;
-    int child_count;    //记录现在可以插入的孩子是第几个位置
-    PiTreeNode *parent;
-public:
-    PiTreeNode(){
-        this->node = nullptr;
-        this->parent = nullptr;
-        this->child_count = 0;
-    }
-
-    void clear(){
-        this->node = nullptr;
-        this->parent = nullptr;
-        this->child_count = 0;
-        this->child.clear();
-    }
-};
-
-
-
-
-//*****************************************************************
-class PiTreeClass{
-public:
-    EdgePairNode *p,*pre,*next;
-public:
-    PiTreeClass(){
-        this->next = this->p = this->pre = nullptr;
-    }
-
-//    void add_node(EdgePairNode &node){
-//        p = &node;
-//        if(this->next == nullptr){  //此时链表为空
-//            this->next = p;
-//            pre = p;
-//            p->next = nullptr;   //处理尾指针
-//        } else{
-//            pre->next = p;
-//            pre = p;
-//            p->next = nullptr;   //处理尾指针
-//        }
-//    }
-};
