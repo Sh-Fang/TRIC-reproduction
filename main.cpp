@@ -5,6 +5,7 @@
 #include <unordered_map>  //无序哈希表map
 #include <map>
 #include <utility>  //pair库
+
 using namespace std;
 
 
@@ -25,7 +26,6 @@ public:
         this->label = _label;
         this->id = _id;
     }
-
     void add_G_neighbor(int v_id){   //添加邻居节点
         this->neighbor.push_back(v_id);
     }
@@ -68,19 +68,15 @@ class EdgePairNode{
 public:
     int Q_id;      //即：这条边属于哪个Q
     vector<int> Q_id_ptr;  //即：{Q}这种标识符，用empty来判断是否有元素
-    int node_id;   //即：在rootInd中的n
     int first_node_in_degree;   //边对中第一个节点的入度 <D,E>
     int second_node_out_degree; //边对中第二个节点的出度
     pair<int,int> label_pair;
     pair<int,int> edge_pair;
     vector<EdgePairNode*> child;   //树中的指针
-    EdgePairNode *parent;
 public:
     EdgePairNode(){
         this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
         this->second_node_out_degree = 0;
-        this->parent = nullptr;
-        this->node_id = -1;
         this->Q_id = -1;
     }
 
@@ -94,8 +90,6 @@ public:
     void clear(){
         this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
         this->second_node_out_degree = 0;
-        this->parent = nullptr;
-        this->node_id = -1;
         this->Q_id = -1;
         this->Q_id_ptr.clear();
     }
@@ -122,11 +116,9 @@ public:
         p = &node;
         if(this->head == nullptr){  //此时链表为空
             this->head = p;
-            p->parent = nullptr;  //因为我定义的链表没有头节点，所以如果这里让p的父亲指向pre的话，其实就是指向p自己，可能会造成后续的麻烦，所以干脆直接让它指向null
             pre = p;
         } else{
             pre->child.push_back(p);
-            p->parent = pre;
             pre = p;
         }
     }
@@ -151,10 +143,8 @@ vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面�
 vector<PiChain> P;   //存放所有Pi的向量（同一个Q_id的Pi存放在同一个向量里）
 unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
-unordered_map<int,vector<EdgePairNode*>> queryInd;  //key是Qid，value是节点的指针向量
+map<pair<int,int>,vector<EdgePairNode*>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
 
-map<pair<int,int>,vector<EdgePairNode*>> edgeInd;   //无序map不能使用pair作为key，而有序map可以
-//key是label_pair，value是对应的节点的连接
 map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 //*****************************************************************
 
@@ -322,30 +312,19 @@ void create_Pi_chain(){
 
 
 
-//N叉树的遍历(递归遍历，为每个节点添加Nid)
-void add_Nid(EdgePairNode *root , int &next_N_id){
-    root->node_id = next_N_id++;      //先给root节点加Nid
-    vector<EdgePairNode *> p = root->child;    //【还可以这样】让p一次性指向root所有的孩子节点
-    for(auto i = 0 ; i < p.size() ; i++){
-        if(!p[i]->child.empty()){    //如果p[i]的孩子不为空
-            add_Nid(p[i],next_N_id);
-        } else{                     //如果p[i]没有孩子
-            p[i]->node_id = next_N_id++;
-        }
-    }
-}
+
 
 
 
 //****************************************************************
 //建立rootInd索引
 void create_rootInd(){
-    int N_id = 0;   //为每棵树上的节点添加ni
     PiChain P1;  //P1的作用就是临时获取Pi链表
     int Tree_id = 0; //用于判定在map的第几个位置上新建一颗树
     EdgePairNode *Tp;   //指向树Ti的指针
     EdgePairNode *Pp;   //指向P1链表的指针
     bool is_create_a_new_tree;  //用于控制是否新建一棵树的开关
+    bool is_joint_rest_node_to_tree = true;   //用于控制是否将链表剩下的节点拼接到树上的开关（默认为true）
 
     for(auto i = 0 ; i < P.size() ; i++){
         P1 = P[i];   //P1的作用就是临时获取Pi链表
@@ -380,8 +359,7 @@ void create_rootInd(){
                     P1.clear_chain();
                     Tree_id++;
                 } else{  //如果最后它的值都是false，说明找到了起点相同的节点，而且定位好了两个指针
-                    //TODO:这里还没有考虑如果树的长度比P1短的情况：如果P1更长，那么就把剩余的部分直接拼进去
-                    while(!Tp->child.empty()){
+                    while(Tp){
                         Tp->Q_id_ptr_Push_Back(Pp->Q_id);  //处理根节点（把P链表中与Ptree树中相同的节点的Qid压进去）
 
                         if(!Pp->child.empty()){
@@ -391,25 +369,27 @@ void create_rootInd(){
                         }
 
                         //接下来向下进行BFS
-                        for(auto ik = Tp->child.begin() ; ik != Tp->child.end() ; ik++){  //遍历所有孩子节点(BFS)
-                            if((*ik)->label_pair == Pp->label_pair){   //注意：这里只是建立rootInd，只要起点不同，就不用往下遍历了（不用考虑后面有重复节点遍历不到的问题）
-                                (*ik)->Q_id_ptr_Push_Back(Pp->Q_id);   //把有公共节点的另一条链表的Qid存进去
-                                if(!Pp->child.empty()){   //如果此时P没有到最后一个节点
-                                    Pp = Pp->child[0];  //移动指针
-                                    Tp = (*ik);
+                        if(!Tp->child.empty()){
+                            for(auto k = 0 ; k < Tp->child.size() ; k++){  //遍历所有孩子节点(BFS)
+                                if(Tp->child[k]->label_pair == Pp->label_pair){  //注意：这里只是建立rootInd，只要起点不同，就不用往下遍历了（不用考虑后面有重复节点遍历不到的问题）
+                                    Tp->child[k]->Q_id_ptr_Push_Back(Pp->Q_id);  //把有公共节点的另一条链表的Qid存进去
+                                    Tp = Tp->child[k];
+                                    is_joint_rest_node_to_tree = false;
+                                } else{
+                                    is_joint_rest_node_to_tree = true;
                                 }
                             }
                         }
-                    }
 
+
+                        if(is_joint_rest_node_to_tree){  //如果到最后，这个值都是true，那么就可以直接拼接了
+                            Tp->child.push_back(Pp);
+                        }
+
+                    }
                 }
             }
         }
-    }
-
-    //此时，已经建好了树，但是还没有每个节点n的信息和Q的标识符，下面的代码将对这两者进行添加
-    for(auto & PTree : PTrees){   //遍历每棵树
-        add_Nid(PTree.second.head,N_id);
     }
 
     cout << "RootInd Create Successfully" << endl;
@@ -444,8 +424,8 @@ void create_T_e_index(EdgePairNode *root){
 
 //建立edgeInd索引
 void create_edgeInd(){
-    for(auto it = PTrees.begin() ; it != PTrees.end() ; it++){   //遍历每棵树
-        create_T_e_index((*it).second.head);
+    for(auto & PTree : PTrees){   //遍历每棵树
+        create_T_e_index(PTree.second.head);
     }
 
     cout << "EdgeInd Create Successfully" <<endl;
@@ -455,13 +435,13 @@ void create_edgeInd(){
 //****************************************************************
 //对初始数据图建立MatV视图
 void create_G_matV(){
-    for(auto it = edgeInd.begin() ; it != edgeInd.end() ; it++){
+    for(auto & it : edgeInd){
         for(auto j = 0 ; j < G.size() ; j++){
-            if((*it).first.first == G[j].label){   //注意：it里面所有的值是label_id，不是v_id
+            if(it.first.first == G[j].label){   //注意：it里面所有的值是label_id，不是v_id
                 for(auto k = G[j].neighbor.begin() ; k != G[j].neighbor.end() ; k++){   //遍历G[j]所有的邻居
-                    if((*it).first.second == G_Vid_Vlabel[(*k)]){  //查询G_Vid_Vlabel表，找出*k对应的lebel
+                    if(it.first.second == G_Vid_Vlabel[(*k)]){  //查询G_Vid_Vlabel表，找出*k对应的label
                         pair<int,int> temp = {G[j].id,(*k)};   //因为*k是G[j].neighbor，也就是v_id，所以存的时候，temp的第二个参数是(*k)，而不是G[j].neighbor[*k]
-                        G_matV[(*it).first].push_back(temp);
+                        G_matV[it.first].push_back(temp);
                     }
                 }
             }
