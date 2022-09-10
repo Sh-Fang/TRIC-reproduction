@@ -83,6 +83,22 @@ public:
         this->node_id = -1;
         this->Q_id = -1;
     }
+
+    void Q_id_ptr_Push_Back(int id){  //在压入Q_id_ptr时候进行判断，向量中是否有重复的元素
+        auto it = find(this->Q_id_ptr.begin(),this->Q_id_ptr.end(),id);
+        if(it == this->Q_id_ptr.end()){  //如果找不到重复元素，那么就压进去
+            this->Q_id_ptr.push_back(id);
+        }
+    }
+
+    void clear(){
+        this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
+        this->second_node_out_degree = 0;
+        this->parent = nullptr;
+        this->node_id = -1;
+        this->Q_id = -1;
+        this->Q_id_ptr.clear();
+    }
 };
 
 
@@ -231,10 +247,11 @@ void create_edge_pair_vector(){
     for(auto it = Q.begin() ; it != Q.end() ; it++){   //遍历所有节点
         for(auto j = 0 ; j < (*it).neighbor_id.size() ; j++){  //遍历节点的所有邻居
             e_node.Q_id = (*it).Q_id;
-            e_node.Q_id_ptr.push_back((*it).Q_id);   //先把自己的Qid压进去
+            e_node.Q_id_ptr_Push_Back((*it).Q_id);   //先把自己的Qid压进去
             e_node.edge_pair = {(*it).v_id,(*it).neighbor_id[j]};
             e_node.label_pair = {(*it).v_label,(*it).neighbor_label[j]};
             Pairs.push_back(e_node);
+            e_node.clear();
         }
     }
 
@@ -274,10 +291,6 @@ void create_Pi_chain(){
                     Pc.add_node(Pairs[i]);   //把能连起来的边表保存
                     Pc.length = Pc.length+1;    //每添加一个节点，就让length加一
                     if(Pairs[j].second_node_out_degree == 0){  //如果最后一个点出度为0，那这个点就是最后一个点
-//                        auto it = find(Pairs[j].Q_id_ptr.begin(),Pairs[j].Q_id_ptr.end(),Pairs[j].Q_id);  //遍历查找向量中有没有与要插入的元素相同的元素
-//                        if(it == Pairs[j].Q_id_ptr.end()){   //如果找不到，则插入元素
-//                            Pairs[j].Q_id_ptr.push_back(Pairs[j].Q_id);   //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
-//                        }
                         Pc.add_node(Pairs[j]);   //把最后这个节点保存再链表中
                         Pc.Q_id = Pairs[i].Q_id;   //保存好Q_id
                         Pc.length = Pc.length + 1;
@@ -293,10 +306,6 @@ void create_Pi_chain(){
                 //如果不能连起来，是单独的一个边对
                 if (Pairs[i].second_node_out_degree == 0 && Pairs[i].first_node_in_degree == 0) {   //防止多次保存不同Q的同名节点
                     PiChain Pc2;
-//                    auto it = find(Pairs[i].Q_id_ptr.begin(),Pairs[i].Q_id_ptr.end(),Pairs[i].Q_id);
-//                    if(it == Pairs[i].Q_id_ptr.end()){
-//                        Pairs[i].Q_id_ptr.push_back(Pairs[i].Q_id);  //如果这个节点是最后一个点，那么它一定是rootInd中有{Q}标志的那个
-//                    }
                     Pc2.add_node(Pairs[i]);
                     Pc2.Q_id = Pairs[i].Q_id;
                     Pc2.length = 1;
@@ -342,11 +351,13 @@ void create_rootInd(){
         P1 = P[i];   //P1的作用就是临时获取Pi链表
         if(PTrees.empty()){   //如果map为空，那么就让第一条Pi直接存到map里面去
             PTrees.insert(pair<int,PiChain>{Tree_id,P1});
+            P1.clear_chain();
             Tree_id++;   //Tree_id++是让下一次从第二个位置开始建树
         }
         else{
             if(P1.length == 1){   //如果是一条单边，也可以直接新建一棵树存进去
                 PTrees.insert(pair<int,PiChain>{Tree_id,P1});
+                P1.clear_chain();
                 Tree_id++;
             }
             else{    //如果长度大于1，就挨个遍历看看有没有起点一样的
@@ -366,11 +377,12 @@ void create_rootInd(){
 
                 if(is_create_a_new_tree){   //如果最后它的值都是true，那么就表示，整个for循环之中没有找到起点相同的节点
                     PTrees.insert(pair<int,PiChain>{Tree_id,P1});   //新建一棵树存进去
+                    P1.clear_chain();
                     Tree_id++;
                 } else{  //如果最后它的值都是false，说明找到了起点相同的节点，而且定位好了两个指针
-                    //TODO:这里还没有考虑如果树的长度比P1短的情况，后续加上
+                    //TODO:这里还没有考虑如果树的长度比P1短的情况：如果P1更长，那么就把剩余的部分直接拼进去
                     while(!Tp->child.empty()){
-                        Tp->Q_id_ptr.push_back(Pp->Q_id);  //处理根节点（把P链表中与Ptree树中相同的节点的Qid压进去）
+                        Tp->Q_id_ptr_Push_Back(Pp->Q_id);  //处理根节点（把P链表中与Ptree树中相同的节点的Qid压进去）
 
                         if(!Pp->child.empty()){
                             Pp = Pp->child[0];    //先让P链表的指针向后移动一个
@@ -381,7 +393,7 @@ void create_rootInd(){
                         //接下来向下进行BFS
                         for(auto ik = Tp->child.begin() ; ik != Tp->child.end() ; ik++){  //遍历所有孩子节点(BFS)
                             if((*ik)->label_pair == Pp->label_pair){   //注意：这里只是建立rootInd，只要起点不同，就不用往下遍历了（不用考虑后面有重复节点遍历不到的问题）
-                                (*ik)->Q_id_ptr.push_back(Pp->Q_id);   //把有公共节点的另一条链表的Qid存进去
+                                (*ik)->Q_id_ptr_Push_Back(Pp->Q_id);   //把有公共节点的另一条链表的Qid存进去
                                 if(!Pp->child.empty()){   //如果此时P没有到最后一个节点
                                     Pp = Pp->child[0];  //移动指针
                                     Tp = (*ik);
@@ -404,44 +416,6 @@ void create_rootInd(){
 }
 
 
-
-//****************************************************************
-//N叉树的遍历(递归遍历，建立Q与n的索引连接)
-void create_Q_n_index(EdgePairNode *root){
-    if(root == nullptr) return;
-
-    if(root->child.empty()){
-        auto it = find(queryInd[root->Q_id].begin(),queryInd[root->Q_id].end(),root);
-        if(it == queryInd[root->Q_id].end()){
-            queryInd[root->Q_id].push_back(root);
-        }
-
-    }
-    else{
-        vector<EdgePairNode *> p = root->child;
-        for(auto i = 0 ; i < p.size() ; i++){
-            if(!p[i]->Q_id_ptr.empty()){
-                for(auto j = 0 ; j < p[i]->Q_id_ptr.size() ; j++){
-                    queryInd[p[i]->Q_id_ptr[j]].push_back(p[i]);
-                }
-                create_Q_n_index(p[i]);
-            } else{
-                create_Q_n_index(p[i]);
-            }
-        }
-    }
-
-}
-
-
-//建立queryInd索引
-void create_queryInd(){
-    for(auto it = PTrees.begin() ; it != PTrees.end() ; it++){   //遍历每棵树
-        create_Q_n_index((*it).second.head);
-    }
-
-    cout << "QueryInd Create Successfully" <<endl;
-}
 
 
 //****************************************************************
@@ -502,17 +476,23 @@ void create_G_matV(){
 //****************************************************************
 //找出受更新流影响的边的查询Qids（可能有多个Qid受更新的影响）
 void find_affected_Q(pair<int,int> label_pair){
-//    vector<int> affectedQids;
+    vector<int> affectedQids;
     auto it = edgeInd.find(label_pair);
     if(it != edgeInd.end()){   //说明在edgeInd中找到了与之相同的节点
         for(auto & j :(*it).second){   //遍历(*it).second，也就是vector<EdgePairNode *>
             for(auto & k:(*j).Q_id_ptr){
-//                    affectedQids.push_back(k);
-                cout << "Affected Qid : " << k << endl;
+                auto m = find(affectedQids.begin(),affectedQids.end(),k);
+                if(m == affectedQids.end()){   //如果压入的id不重复，那么就压进去
+                    affectedQids.push_back(k);
+                }
             }
         }
     } else{
         cout << "Not Affected Q" << endl;
+    }
+
+    for(auto &i:affectedQids){
+        cout << "Affected Q is : " << i << endl;
     }
 }
 
@@ -520,7 +500,29 @@ void find_affected_Q(pair<int,int> label_pair){
 
 //****************************************************************
 //加入更新流，并更新G_matV
-void update_G_matV(pair<int,int> new_pair){   //stream的格式是"e 5 7 0"，所以pair里面是v_id
+void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0"，所以pair里面是v_id
+    pair<int,int> new_pair;   //保存从stream读取的边对
+
+    char single_data;
+    int id1,id2,weight;
+
+    ifstream infile;
+
+    infile.open(path_of_stream);  //打开更新流文件
+
+    if(!infile){
+        cerr << "Failed To Stream Graph" << endl;  //cerr是std中的标准错误输出（和cout有区别）
+        return;
+    }
+
+    while(infile >> single_data){
+        if(single_data=='e'){   //如果遇到了边
+            infile >> id1 >> id2 >> weight;
+            new_pair = {id1,id2};   //保存从stream读取的边对
+        }
+    }
+
+
     pair<int,int> label_pair = {G_Vid_Vlabel[new_pair.first],G_Vid_Vlabel[new_pair.second]};
     G_matV[label_pair].push_back(new_pair);
 
@@ -539,6 +541,7 @@ int main(){
     cout << "########################################################" <<endl;
     string path_of_data_graph = "E:\\QueryC++\\data-graph.txt";
     string path_of_query_graph = "E:\\QueryC++\\multi-query.txt";
+    string path_of_stream = "E:\\GraphQuery C++\\stream.txt";
 
     inputG(path_of_data_graph);
     inputQ(path_of_query_graph);
@@ -553,15 +556,13 @@ int main(){
 
     create_rootInd();   //创建rootInd索引
 
-    create_queryInd();
-
     create_edgeInd();
 
     create_G_matV();
 
     cout << "********************************************************" <<endl;
 
-    update_G_matV({8,7});
+    update_G_matV(path_of_stream);
 
     return 0;
 }
