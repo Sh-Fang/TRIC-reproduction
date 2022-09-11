@@ -117,9 +117,16 @@ public:
         if(this->head == nullptr){  //此时链表为空
             this->head = p;
             pre = p;
+            this->length += 1;
+            this->Q_id = node.Q_id;
         } else{
-            pre->child.push_back(p);
-            pre = p;
+            auto it = find(pre->child.begin(),pre->child.end(),p);
+            if(it == pre->child.end()){   //如果没有找到重复的元素，那么就插入
+                pre->child.push_back(p);
+                pre = p;
+                this->length += 1;
+                this->Q_id = node.Q_id;
+            }
         }
     }
 
@@ -140,6 +147,7 @@ unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应
 vector<vertex_Q_Node> Q;   //初始化多重查询图
 
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
+
 vector<PiChain> P;   //存放所有Pi的向量（同一个Q_id的Pi存放在同一个向量里）
 unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
@@ -270,47 +278,52 @@ void create_edge_pair_vector(){
 }
 
 
+
+
+
+
 //*****************************************************************
 //将边对添加到链表中去
 void create_Pi_chain(){
     PiChain Pc;   //实例化一个链表
-    for(auto i = 0 ; i < Pairs.size() ; i++){  //找出能连起来的边对，将其保存到链表
-        for(auto j = 0 ; j < Pairs.size() ; j++){
-            if(Pairs[i].Q_id == Pairs[j].Q_id){  //如果能连起来，而且同一个Q
-                if(Pairs[i].edge_pair.second == Pairs[j].edge_pair.first){  //如果能连起来
-                    Pc.add_node(Pairs[i]);   //把能连起来的边表保存
-                    Pc.length = Pc.length+1;    //每添加一个节点，就让length加一
-                    if(Pairs[j].second_node_out_degree == 0){  //如果最后一个点出度为0，那这个点就是最后一个点
-                        Pc.add_node(Pairs[j]);   //把最后这个节点保存再链表中
-                        Pc.Q_id = Pairs[i].Q_id;   //保存好Q_id
-                        Pc.length = Pc.length + 1;
-                        P.push_back(Pc);     //把链表压入P向量中
-                        Pc.clear_chain();   //清空链表(每压入一次，就清空一次)
-                    } else{
-                        i = j; //下一次，让i跳过Pairs[j]这个节点，直接让i从j开始
-                        continue;  //直接开始下一次内层for循环
-                    }
+    int pre,p,q;
+    pre = 0;
+    while(pre < Pairs.size()){   //pre是单向的，只向前移动，不回头，一次移动一个单位
+        q = 0;                  //q是循环指针，每次都从0开始，一直到结尾
+        p = pre;                //p是临时工作指针，如果q找到了连起来的边，那么就把p指向q；每次处理开始，让p回到pre的位置
+        if(Pairs[pre].first_node_in_degree == 0){    //如果第一节点入度为0，那么一定是起点
+            Pc.add_node(Pairs[pre]);             //先把起点存起来（因为在add_node这个函数里面，我已经写了“重复了就不往里面存”的判断，所以可以放心的往里面存）
+            if(Pairs[pre].second_node_out_degree == 0){    //如果第一节点入度为0的同时，第二节点也为0，那么就是单边
+                P.push_back(Pc);     //因为是单边，所以可以直接把链表压入P向量中
+                Pc.clear_chain();   //清空链表(每压入一次，就清空一次)
+                pre++ ;              //每压入链表一次，就让pre向后移动一个
+                continue;            //pre移动以后，就可以直接开始下一次处理了
+            }
+        } else{            //如果第一节点入度不为0，说明不是起点，而是中间的点
+            pre++;         //因为这个位置的代码是最开头，如果这个地方就遇到了中间节点，那么直接就可以pre++了
+            continue;
+        }
 
-                }
-
-                //如果不能连起来，是单独的一个边对
-                if (Pairs[i].second_node_out_degree == 0 && Pairs[i].first_node_in_degree == 0) {   //防止多次保存不同Q的同名节点
-                    PiChain Pc2;
-                    Pc2.add_node(Pairs[i]);
-                    Pc2.Q_id = Pairs[i].Q_id;
-                    Pc2.length = 1;
-                    P.push_back(Pc2);  //把这个查询链P压入P向量中
-                    Pc2.clear_chain();    //清空链表
-                    break;   //j的目的是找能连起来的边，既然此时的i指向的是必然的单边，所以可以直接break结束当前的内循环
+        while(q < Pairs.size()){    //q这个循环指针
+            if(Pairs[p].Q_id == Pairs[q].Q_id){
+                if(Pairs[p].edge_pair.second == Pairs[q].edge_pair.first){
+                    Pc.add_node(Pairs[q]);
+                    p = q;            //如果q找到了可以配对的边，就让p指向q的位置
+                    q = 0;            //为下一次的处理做准备，让q回到0的位置
+                    continue;
                 }
             }
+            q++;           //如果Qid不同，就让q继续往下
         }
+
+        P.push_back(Pc);     //把链表压入P向量中
+        Pc.clear_chain();   //清空链表(每压入一次，就清空一次)
+        pre++;             //每次压入链表后，就让pre++
     }
+
 
     cout << "PiChain Create Successfully" << endl;
 }
-
-
 
 
 
@@ -374,18 +387,11 @@ void create_rootInd(){
                                 if(Tp->child[k]->label_pair == Pp->label_pair){  //注意：这里只是建立rootInd，只要起点不同，就不用往下遍历了（不用考虑后面有重复节点遍历不到的问题）
                                     Tp->child[k]->Q_id_ptr_Push_Back(Pp->Q_id);  //把有公共节点的另一条链表的Qid存进去
                                     Tp = Tp->child[k];
-                                    is_joint_rest_node_to_tree = false;
-                                } else{
-                                    is_joint_rest_node_to_tree = true;
                                 }
                             }
-                        }
-
-
-                        if(is_joint_rest_node_to_tree){  //如果到最后，这个值都是true，那么就可以直接拼接了
+                        } else{    //如果遍历到这棵树的叶节点，那么就直接把剩余的链表压入叶节点后面
                             Tp->child.push_back(Pp);
                         }
-
                     }
                 }
             }
@@ -519,8 +525,8 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
 
 int main(){
     cout << "########################################################" <<endl;
-    string path_of_data_graph = "E:\\QueryC++\\data-graph.txt";
-    string path_of_query_graph = "E:\\QueryC++\\multi-query.txt";
+    string path_of_data_graph = "E:\\GraphQuery C++\\data-graph.txt";
+    string path_of_query_graph = "E:\\GraphQuery C++\\multi-query.txt";
     string path_of_stream = "E:\\GraphQuery C++\\stream.txt";
 
     inputG(path_of_data_graph);
