@@ -153,7 +153,11 @@ unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
 map<pair<int,int>,vector<EdgePairNode*>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
 
+unordered_map<int,vector<EdgePairNode*>> queryInd;   //key是Qid，value是n节点
+
 map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
+
+unordered_map<int,vector<int>> Match_map;   //用在match阶段，判断子图是否在大图中匹配
 //*****************************************************************
 
 
@@ -458,28 +462,76 @@ void create_G_matV(){
 }
 
 
+void create_queryInd(){
+    vector<EdgePairNode*> p;
+    for(auto &it :edgeInd){
+        p = it.second;
+        for(auto & j : p){
+            for(auto &k : j->Q_id_ptr){
+                queryInd[k].push_back(j);
+            }
+        }
+    }
+
+    cout << "QueryInd Create Successfully" <<endl;
+}
+
+
 
 //****************************************************************
-//找出受更新流影响的边的查询Qids（可能有多个Qid受更新的影响）
-void find_affected_Q(pair<int,int> label_pair){
-    vector<int> affectedQids;
-    auto it = edgeInd.find(label_pair);
-    if(it != edgeInd.end()){   //说明在edgeInd中找到了与之相同的节点
-        for(auto & j :(*it).second){   //遍历(*it).second，也就是vector<EdgePairNode *>
-            for(auto & k:(*j).Q_id_ptr){
-                auto m = find(affectedQids.begin(),affectedQids.end(),k);
-                if(m == affectedQids.end()){   //如果压入的id不重复，那么就压进去
-                    affectedQids.push_back(k);
+//判断子图是否在大图中匹配
+int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  //传参有两个，label和id
+    int match_num = 0 ;   //保存总共能够匹配的数量
+    vector<EdgePairNode*> p;   //指向edgeInd里面的向量
+    vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
+
+    p = edgeInd[label_pair];
+
+    for(auto &it:p){   //遍历所有edgeInd里面的向量
+        for(auto &ij:it->Q_id_ptr){   //遍历所有edgeInd里面的向量的Q标志
+            auto ik = find(affected_Q.begin(),affected_Q.end(),ij);
+            if(ik == affected_Q.end()){
+                affected_Q.push_back(ij);   //记录本次更新中受影响的Q
+            }
+        }
+    }
+
+    for(auto &ij :affected_Q){   //遍历受影响的Q
+        for(auto &ik:queryInd[ij]){   //遍历所有的Q里面的节点
+            for(auto &im:G_matV[ik->label_pair]){   //遍历符合要求的G_matV下的向量
+                if(ik->label_pair == label_pair && im == id_pair){  //跳过刚刚更新的那条边【重要！！！】
+                    continue;
+                }
+                //跳过刚更新的那条边以后，把其他所有的顶点信息都存到Match_map中去
+                auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
+                if(ix == Match_map[ik->label_pair.first].end()){
+                    Match_map[ik->label_pair.first].push_back(im.first);
+                }
+
+                auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
+                if(iy == Match_map[ik->label_pair.second].end()){
+                    Match_map[ik->label_pair.second].push_back(im.second);
                 }
             }
         }
-    } else{
-        cout << "Not Affected Q" << endl;
-    }
 
-    for(auto &i:affectedQids){
-        cout << "Affected Q is : " << i << endl;
+        //此时已经把当前对应的Q里面所有的点的label_id和v_id都对应存到Match_map里面了
+        // 现在判断刚更新的那条边的id_pair能否和Match_map里面的顶点连接起来，如果可以，说明匹配。反之则否
+        auto iq = find(Match_map[label_pair.first].begin(),Match_map[label_pair.first].end(),id_pair.first);
+        if(iq == Match_map[label_pair.first].end()){
+            Match_map.clear();  //如果不符合要求，要进行下一次循环的时候，先把map清空
+            continue;
+        }
+
+        auto ip = find(Match_map[label_pair.second].begin(),Match_map[label_pair.second].end(),id_pair.second);
+        if(ip == Match_map[label_pair.second].end()){
+            Match_map.clear();  //如果不符合要求，要进行下一次循环的时候，先把map清空
+            continue;
+        }
+
+        match_num += 1 ;   //如果到最后都没有执行continue，说明可以匹配，num数量加一
     }
+    return match_num;
 }
 
 
@@ -487,7 +539,10 @@ void find_affected_Q(pair<int,int> label_pair){
 //****************************************************************
 //加入更新流，并更新G_matV
 void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0"，所以pair里面是v_id
-    pair<int,int> new_pair;   //保存从stream读取的边对
+    pair<int,int> id_pair;   //保存从stream读取的边对(里面是V_id)
+    pair<int,int> label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
+
+    int total_match_num = 0;  //保存匹配图的个数
 
     char single_data;
     int id1,id2,weight;
@@ -504,17 +559,28 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
     while(infile >> single_data){
         if(single_data=='e'){   //如果遇到了边
             infile >> id1 >> id2 >> weight;
-            new_pair = {id1,id2};   //保存从stream读取的边对
+            id_pair = {id1,id2};   //保存从stream读取的边对
+            label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
+            auto it = edgeInd.find(label_pair);
+            if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
+                auto ik = find(G_matV[label_pair].begin(),G_matV[label_pair].end(),id_pair);
+                if(ik == G_matV[label_pair].end()){     //如果没有重复的，则插入
+                    G_matV[label_pair].push_back(id_pair);
+                }
+                cout << "Update Successfully : " << id_pair.first << " -> " << id_pair.second <<endl;
+
+                total_match_num += subgraph_total_match_num(label_pair,id_pair);    //计算匹配图数量，每插入一条边就计算一次
+            } else{          //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
+                cout << "Not Affected Q : " << id_pair.first << " -> " << id_pair.second  <<endl;
+            }
         }
     }
 
 
-    pair<int,int> label_pair = {G_Vid_Vlabel[new_pair.first],G_Vid_Vlabel[new_pair.second]};
-    G_matV[label_pair].push_back(new_pair);
 
-    cout << "Update Successfully : " << new_pair.first << " -> " << new_pair.second <<endl;
+    cout << "Total Match Num Is : " << total_match_num << endl;
 
-    find_affected_Q(label_pair);
+
 }
 
 
@@ -542,13 +608,16 @@ int main(){
 
     create_rootInd();   //创建rootInd索引
 
-    create_edgeInd();
+    create_edgeInd();  //创建edgeInd索引
 
-    create_G_matV();
+    create_queryInd();  //创建queryInd索引
+
+    create_G_matV();   //创建物化视图
 
     cout << "********************************************************" <<endl;
 
-    update_G_matV(path_of_stream);
+
+    update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
 
     return 0;
 }
