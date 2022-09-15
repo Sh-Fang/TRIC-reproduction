@@ -591,9 +591,9 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
 
 int main(){
     cout << "########################################################" <<endl;
-    string path_of_data_graph = "E:\\GraphQuery C++\\data-graph.txt";
-    string path_of_query_graph = "E:\\GraphQuery C++\\multi-query.txt";
-    string path_of_stream = "E:\\GraphQuery C++\\stream.txt";
+    string path_of_data_graph = R"(E:\GraphQuery C++\Data\data-graph.txt)";
+    string path_of_query_graph = R"(E:\GraphQuery C++\Data\multi-query.txt)";
+    string path_of_stream = R"(E:\GraphQuery C++\Data\stream.txt)";
 
     inputG(path_of_data_graph);
     inputQ(path_of_query_graph);
