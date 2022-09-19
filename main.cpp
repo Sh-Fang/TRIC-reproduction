@@ -138,6 +138,23 @@ public:
 };
 
 
+class MatchTreeNode{
+public:
+    int v_id;
+    int label_id;
+    vector<MatchTreeNode*> child;
+public:
+    MatchTreeNode(){
+        v_id = 0;
+        label_id = 0;
+    }
+
+    void clear(){
+        v_id = 0;
+        label_id = 0;
+        child.clear();
+    }
+};
 
 
 
@@ -158,6 +175,8 @@ unordered_map<int,vector<EdgePairNode*>> queryInd;   //key是Qid，value是n节�
 map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 
 unordered_map<int,vector<int>> Match_map;   //用在match阶段，判断子图是否在大图中匹配
+
+unordered_map<int,vector<MatchTreeNode>> Match_tree;   //用于保存match中使用到的树
 //*****************************************************************
 
 
@@ -462,20 +481,60 @@ void create_G_matV(){
 }
 
 
+
+//创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
 void create_queryInd(){
     vector<EdgePairNode*> p;
-    for(auto &it :edgeInd){
-        p = it.second;
-        for(auto & j : p){
-            for(auto &k : j->Q_id_ptr){
-                queryInd[k].push_back(j);
-            }
-        }
+    for(auto &it:Pairs){
+        queryInd[it.Q_id].push_back(&it);
     }
 
     cout << "QueryInd Create Successfully" <<endl;
 }
 
+
+//为match_tree中的每个节点连接孩子
+void for_each_match_tress_node_add_child(int present_column){
+    if(!Match_tree[present_column+1].empty()){   //如果下一列不为空
+        for(auto &i:Match_tree[present_column]){   //遍历当前列
+            for(auto &j:Match_tree[present_column+1]){   //遍历下一列
+                i.child.push_back(&j);   //把下一列的所有元素都压入当前列的每个节点中
+            }
+        }
+
+        for_each_match_tress_node_add_child(present_column+1);   //递归
+
+    }
+}
+
+
+
+
+//从map_tree里面通过DFS递归获取一条路径，并判断这条路径能否匹配成功（参数说明：1根节点，2用于保存最终获取的单条路径，3最后能够匹配的数量，4保存临时获取的那条Q链表）
+void DFS_get_match_path(MatchTreeNode &root,unordered_map<int,int> &temp_map,int &match_num , vector<EdgePairNode*> &temp_queryInd){
+    temp_map[root.label_id] = root.v_id;    //每次开始，先把root压进去
+    if(!root.child.empty()){        //如果不是叶节点
+        for(auto &it:root.child){    //递归
+            DFS_get_match_path(*it , temp_map , match_num , temp_queryInd);
+        }
+    } else{              //如果是叶节点
+        for(auto &it:temp_queryInd){   //遍历当前Q里面的所有边对
+            int query_first_node = it->label_pair.first;   //保存当前边对的第一个节点的label
+            int query_second_node = it->label_pair.second;  //保存当前边对的第二个节点的label
+            int query_first_node_match_map_v_id = temp_map[query_first_node];  //保存当前边对的第一个节点的label在临时map里面的v_id
+            int query_second_node_match_map_v_id = temp_map[query_second_node];  //保存当前边对的第二个节点的label在临时map里面的v_id
+            vector<int> *p = &G[query_first_node_match_map_v_id].neighbor;   //让p指向第一个节点的v_id对应的G图内的所有邻居
+            auto ij = find(p->begin(),p->end(),query_second_node_match_map_v_id);
+            if(ij == p->end()){   //如果在邻居里面没有找到对应的节点，那么后面也不用继续了，这条路径pass
+                return;
+            }
+        }
+
+        match_num += 1 ;  //如果执行到最后都没有提前执行return，说明匹配
+        temp_map.clear(); //开始下一次处理之前，把map清空
+    }
+
+}
 
 
 //****************************************************************
@@ -484,6 +543,8 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
     int match_num = 0 ;   //保存总共能够匹配的数量
     vector<EdgePairNode*> p;   //指向edgeInd里面的向量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
+    unordered_map<int,int> temp_Match_map;   //临时保存从树里面遍历得到的match_map
+    vector<EdgePairNode*> temp_queryInd;  //临时保存从queryInd里面遍历得到的一条链表
 
     p = edgeInd[label_pair];
 
@@ -498,11 +559,20 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
 
     for(auto &ij :affected_Q){   //遍历受影响的Q
         for(auto &ik:queryInd[ij]){   //遍历所有的Q里面的节点
+            temp_queryInd.push_back(ik);        //把从queryInd里面遍历取出来的链表存起来
             for(auto &im:G_matV[ik->label_pair]){   //遍历符合要求的G_matV下的向量
-                if(ik->label_pair == label_pair && im == id_pair){  //跳过刚刚更新的那条边【重要！！！】
+
+                //保证传进来的<D,E>中的D能够固定为v5这个v_id的节点上
+                if(label_pair.first == ik->label_pair.first && id_pair.first != im.first){
                     continue;
                 }
-                //跳过刚更新的那条边以后，把其他所有的顶点信息都存到Match_map中去
+                //保证传进来的<D,E>中的E能够固定为v7这个v_id的节点上
+                if(label_pair.second == ik->label_pair.second && id_pair.second != im.second){
+                    continue;
+                }
+
+                //所有与当前Q有关的顶点信息都存到Match_map中去
+
                 auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
                 if(ix == Match_map[ik->label_pair.first].end()){
                     Match_map[ik->label_pair.first].push_back(im.first);
@@ -516,22 +586,31 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
         }
 
         //此时已经把当前对应的Q里面所有的点的label_id和v_id都对应存到Match_map里面了
-        // 现在判断刚更新的那条边的id_pair能否和Match_map里面的顶点连接起来，如果可以，说明匹配。反之则否
-        auto iq = find(Match_map[label_pair.first].begin(),Match_map[label_pair.first].end(),id_pair.first);
-        if(iq == Match_map[label_pair.first].end()){
-            Match_map.clear();  //如果不符合要求，要进行下一次循环的时候，先把map清空
-            continue;
+        //现在开始把Match_map中的所有数据全部迁移到Match_tree中去
+        MatchTreeNode temp_node;   //用于把match_map中的数据包装一下，以便压入match_tree中
+        int count = 0;
+        for(auto &ia:Match_map){
+            for(auto &ib:ia.second){
+                temp_node.v_id = ib;
+                temp_node.label_id = ia.first;
+                Match_tree[count].push_back(temp_node);
+                temp_node.clear();
+            }
+            count++;     //count的自加放在这里，而不是"Match_tree[count++].push_back(temp_node)"，因为要保证，相同label的节点要压在同一个vector里面
         }
 
-        auto ip = find(Match_map[label_pair.second].begin(),Match_map[label_pair.second].end(),id_pair.second);
-        if(ip == Match_map[label_pair.second].end()){
-            Match_map.clear();  //如果不符合要求，要进行下一次循环的时候，先把map清空
-            continue;
+        //为每个节点进行连接孩子的操作
+        for_each_match_tress_node_add_child(0);
+
+        //此时Match_tree已经处理好了，现在开始遍历tree，获取单条路径(DFS)
+        for(auto &root:Match_tree[0]){
+            DFS_get_match_path(root , temp_Match_map , match_num , temp_queryInd);//（参数说明在该函数的入口处）
         }
 
-        match_num += 1 ;   //如果到最后都没有执行continue，说明可以匹配，num数量加一
+        Match_map.clear();  //每次开始一轮新的Q匹配查询，就把map和tree清空
+        Match_tree.clear();
     }
-    return match_num;
+    return match_num;   //最终返回匹配数量
 }
 
 
@@ -561,6 +640,17 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
             infile >> id1 >> id2 >> weight;
             id_pair = {id1,id2};   //保存从stream读取的边对
             label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
+
+            //更新GmatV的同时，也把G图里面的邻居情况一起更新了
+            if(std::find(G[id1].neighbor.begin(), G[id1].neighbor.end(), id2) == G[id1].neighbor.end()){
+                G[id1].neighbor.push_back(id2);
+            }
+
+            if(std::find(G[id2].neighbor.begin(), G[id2].neighbor.end(), id1) == G[id2].neighbor.end()){
+                G[id2].neighbor.push_back(id1);
+            }
+
+            //此处开始更新GmatV
             auto it = edgeInd.find(label_pair);
             if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
                 auto ik = find(G_matV[label_pair].begin(),G_matV[label_pair].end(),id_pair);
@@ -569,7 +659,9 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
                 }
                 cout << "Update Successfully : " << id_pair.first << " -> " << id_pair.second <<endl;
 
+                //调用subgraph_total_match_num()函数获取最后的匹配数量
                 total_match_num += subgraph_total_match_num(label_pair,id_pair);    //计算匹配图数量，每插入一条边就计算一次
+
             } else{          //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
                 cout << "Not Affected Q : " << id_pair.first << " -> " << id_pair.second  <<endl;
             }
