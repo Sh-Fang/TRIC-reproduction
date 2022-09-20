@@ -563,6 +563,7 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
         }
     }
 
+
     for(auto &ij :affected_Q){   //遍历受影响的Q
         for(auto &ik:queryInd[ij]){   //遍历所有的Q里面的节点
             temp_queryInd.push_back(ik);        //把从queryInd里面遍历取出来的链表存起来
