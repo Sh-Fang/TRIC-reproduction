@@ -518,6 +518,13 @@ void DFS_get_match_path(MatchTreeNode &root,unordered_map<int,int> &temp_map,int
             DFS_get_match_path(*it , temp_map , match_num , temp_queryInd);
         }
     } else{              //如果是叶节点
+        cout << endl;
+        cout <<"value: ";
+        for(auto &ia:temp_map){
+            cout <<ia.second <<" - ";
+        }
+        cout << endl;
+        cout <<"^^^^^^^^^^^^^^^^^"<<endl;
         for(auto &it:temp_queryInd){   //遍历当前Q里面的所有边对
             int query_first_node = it->label_pair.first;   //保存当前边对的第一个节点的label
             int query_second_node = it->label_pair.second;  //保存当前边对的第二个节点的label
@@ -533,7 +540,6 @@ void DFS_get_match_path(MatchTreeNode &root,unordered_map<int,int> &temp_map,int
         match_num += 1 ;  //如果执行到最后都没有提前执行return，说明匹配
         temp_map.clear(); //开始下一次处理之前，把map清空
     }
-
 }
 
 
@@ -561,26 +567,49 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
         for(auto &ik:queryInd[ij]){   //遍历所有的Q里面的节点
             temp_queryInd.push_back(ik);        //把从queryInd里面遍历取出来的链表存起来
             for(auto &im:G_matV[ik->label_pair]){   //遍历符合要求的G_matV下的向量
+                //如果有任何一个label能与传进来的label相同，那么就判断他们对应的id是否相同
+                if((ik->label_pair.first == label_pair.first || ik->label_pair.first == label_pair.second) || (ik->label_pair.second == label_pair.first || ik->label_pair.second == label_pair.second)){
+                    //如果是label的first与传进来的相同
+                    if((ik->label_pair.first == label_pair.first || ik->label_pair.first == label_pair.second)){
+                        //那么就判断他们的id是否相同，相同的话就固定住
+                        if(im.first == id_pair.first || im.first == id_pair.second){
+                            auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
+                            if(ix == Match_map[ik->label_pair.first].end()){
+                                Match_map[ik->label_pair.first].push_back(im.first);
+                            }
+                        }
+                    } else{  //如果label的first不同，说明是没有影响的节点，直接保存
+                        auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
+                        if(ix == Match_map[ik->label_pair.first].end()){
+                            Match_map[ik->label_pair.first].push_back(im.first);
+                        }
+                    }
 
-                //保证传进来的<D,E>中的D能够固定为v5这个v_id的节点上
-                if(label_pair.first == ik->label_pair.first && id_pair.first != im.first){
-                    continue;
-                }
-                //保证传进来的<D,E>中的E能够固定为v7这个v_id的节点上
-                if(label_pair.second == ik->label_pair.second && id_pair.second != im.second){
-                    continue;
-                }
+                    //同理，如果是label的second与传进来的相同
+                    if(ik->label_pair.second == label_pair.first || ik->label_pair.second == label_pair.second){
+                        //那么就判断他们的id是否相同，相同的话就固定住
+                        if(im.second == id_pair.first || im.second == id_pair.second){
+                            auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
+                            if(iy == Match_map[ik->label_pair.second].end()){
+                                Match_map[ik->label_pair.second].push_back(im.second);
+                            }
+                        }
+                    } else{   //如果label的second不同，说明是没有影响的节点，直接保存
+                        auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
+                        if(iy == Match_map[ik->label_pair.second].end()){
+                            Match_map[ik->label_pair.second].push_back(im.second);
+                        }
+                    }
+                } else{   //如果label与传进来的label没有一个相同的，那么这个边对一定没有影响，直接把边对的两个节点都存进去
+                    auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
+                    if(ix == Match_map[ik->label_pair.first].end()){
+                        Match_map[ik->label_pair.first].push_back(im.first);
+                    }
 
-                //所有与当前Q有关的顶点信息都存到Match_map中去
-
-                auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
-                if(ix == Match_map[ik->label_pair.first].end()){
-                    Match_map[ik->label_pair.first].push_back(im.first);
-                }
-
-                auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
-                if(iy == Match_map[ik->label_pair.second].end()){
-                    Match_map[ik->label_pair.second].push_back(im.second);
+                    auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
+                    if(iy == Match_map[ik->label_pair.second].end()){
+                        Match_map[ik->label_pair.second].push_back(im.second);
+                    }
                 }
             }
         }
@@ -605,8 +634,10 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
         //此时Match_tree已经处理好了，现在开始遍历tree，获取单条路径(DFS)
         for(auto &root:Match_tree[0]){
             DFS_get_match_path(root , temp_Match_map , match_num , temp_queryInd);//（参数说明在该函数的入口处）
+            temp_Match_map.clear();
         }
 
+        temp_queryInd.clear();
         Match_map.clear();  //每次开始一轮新的Q匹配查询，就把map和tree清空
         Match_tree.clear();
     }
