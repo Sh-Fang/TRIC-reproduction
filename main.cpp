@@ -5,6 +5,7 @@
 #include <unordered_map>  //无序哈希表map
 #include <map>
 #include <utility>  //pair库
+#include<stack>     //stack库
 
 using namespace std;
 
@@ -42,6 +43,7 @@ public:
     int Q_id,total_v_num;
     vector<int> neighbor_id; //存邻居节点id
     vector<int> neighbor_label; //存邻居节点label
+    vector<int> two_way_neighbor;  //双向邻居节点
 public:
     vertex_Q_Node(){
         this->v_id = this->total_v_num  = this->Q_id =  this->v_label =  -1 ;
@@ -158,10 +160,32 @@ public:
 
 
 
+class GmatV_Node{
+public:
+    pair<int,int> vid_pair;
+    pair<int,int> uid_pair;
+    vector<GmatV_Node*> child;
+//    map<int,int> uid_vid_map;
+    GmatV_Node *parent;
+
+public:
+    GmatV_Node(){
+        parent = nullptr;
+    }
+
+    void clear(){
+        vid_pair = {0,0};
+        child.clear();
+//        uid_vid_map.clear();
+    }
+};
+
+
 //*****************************************************************
 vector<vertex_G_Node> G;   //初始化数据图:G用向量存
 unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应关系(key是V_id)
 vector<vertex_Q_Node> Q;   //初始化多重查询图
+unordered_map<int,int> Q_Uid_Ulabel;
 
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
 
@@ -174,9 +198,13 @@ unordered_map<int,vector<EdgePairNode*>> queryInd;   //key是Qid，value是n节�
 
 map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 
+map<pair<int, int>, vector<GmatV_Node>> temp_G_matV;  //G_matV中和id_pair中相同的
+
 unordered_map<int,vector<int>> Match_map;   //用在match阶段，判断子图是否在大图中匹配
 
 unordered_map<int,vector<MatchTreeNode>> Match_tree;   //用于保存match中使用到的树
+
+
 //*****************************************************************
 
 
@@ -253,7 +281,15 @@ void inputQ(const string& path_of_query_graph){
             infile >> e_id1 >> e_id2 >> e_weight;
             Q[e_id1].add_Q_neighbor(e_id2,Q[e_id2].v_label);   //Q为有向图，所以存储结果为id1 -> id2
                                                 //注：此处 ↑ 可以直接Q[e_id2]取label的原因：因为是先读取v再读取e的，所以此时所有v的信息都已经读取进去了
+//            Q[e_id2].add_Q_neighbor(e_id1,Q[e_id1].v_label);
+            Q[e_id1].two_way_neighbor.push_back(e_id2);
+            Q[e_id2].two_way_neighbor.push_back(e_id1);
         }
+    }
+
+    //建立Q中所有节点v_label和v_id的对应关系
+    for(auto & it : Q){   //遍历G的所有节点
+        Q_Uid_Ulabel[it.v_id] = it.v_label;
     }
 
     cout << "Query Graph Loading Successfully" << endl;
@@ -265,16 +301,27 @@ void inputQ(const string& path_of_query_graph){
 //创建边对节点
 void create_edge_pair_vector(){
     EdgePairNode e_node;
-    for(auto it = Q.begin() ; it != Q.end() ; it++){   //遍历所有节点
-        for(auto j = 0 ; j < (*it).neighbor_id.size() ; j++){  //遍历节点的所有邻居
-            e_node.Q_id = (*it).Q_id;
-            e_node.Q_id_ptr_Push_Back((*it).Q_id);   //先把自己的Qid压进去
-            e_node.edge_pair = {(*it).v_id,(*it).neighbor_id[j]};
-            e_node.label_pair = {(*it).v_label,(*it).neighbor_label[j]};
+    for(auto &Q_item:Q){
+        for(auto &Q_item_neighbor:Q_item.neighbor_id){
+            e_node.Q_id = Q_item.Q_id;
+            e_node.Q_id_ptr.push_back(Q_item.Q_id);  //先把自己的Qid压进去
+            e_node.edge_pair = {Q_item.v_id,Q_item_neighbor};
+            e_node.label_pair = {Q_item.v_label,Q_Uid_Ulabel[Q_item_neighbor]};
             Pairs.push_back(e_node);
             e_node.clear();
         }
     }
+
+//    for(auto it = Q.begin() ; it != Q.end() ; it++){   //遍历所有节点
+//        for(auto j = 0 ; j < (*it).neighbor_id.size() ; j++){  //遍历节点的所有邻居
+//            e_node.Q_id = (*it).Q_id;
+//            e_node.Q_id_ptr_Push_Back((*it).Q_id);   //先把自己的Qid压进去
+//            e_node.edge_pair = {(*it).v_id,(*it).neighbor_id[j]};
+//            e_node.label_pair = {(*it).v_label,(*it).neighbor_label[j]};
+//            Pairs.push_back(e_node);
+//            e_node.clear();
+//        }
+//    }
 
 
     //现在，所有的边对都保存了，接下来是去除不符合要求的边对
@@ -425,6 +472,15 @@ void create_rootInd(){
 }
 
 
+//创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
+void create_queryInd(){
+    vector<EdgePairNode*> p;
+    for(auto &it:Pairs){
+        queryInd[it.Q_id].push_back(&it);
+    }
+
+    cout << "QueryInd Create Successfully" <<endl;
+}
 
 
 //****************************************************************
@@ -446,15 +502,25 @@ void create_T_e_index(EdgePairNode *root){
             edgeInd[p[i]->label_pair].push_back(p[i]);
         }
     }
-
 }
 
 
 
 //建立edgeInd索引
+//void create_edgeInd(){
+//    for(auto & PTree : PTrees){   //遍历每棵树
+//        create_T_e_index(PTree.second.head);
+//    }
+//
+//    cout << "EdgeInd Create Successfully" <<endl;
+//}
+
 void create_edgeInd(){
-    for(auto & PTree : PTrees){   //遍历每棵树
-        create_T_e_index(PTree.second.head);
+    for(auto & queryInd_key : queryInd){   //遍历每棵树
+//        create_T_e_index(PTree.second.head);
+        for(auto &queryInd_value:queryInd_key.second){
+            edgeInd[queryInd_value->label_pair].push_back(queryInd_value);
+        }
     }
 
     cout << "EdgeInd Create Successfully" <<endl;
@@ -464,13 +530,12 @@ void create_edgeInd(){
 //****************************************************************
 //对初始数据图建立MatV视图
 void create_G_matV(){
-    for(auto & it : edgeInd){
-        for(auto j = 0 ; j < G.size() ; j++){
-            if(it.first.first == G[j].label){   //注意：it里面所有的值是label_id，不是v_id
-                for(auto k = G[j].neighbor.begin() ; k != G[j].neighbor.end() ; k++){   //遍历G[j]所有的邻居
-                    if(it.first.second == G_Vid_Vlabel[(*k)]){  //查询G_Vid_Vlabel表，找出*k对应的label
-                        pair<int,int> temp = {G[j].id,(*k)};   //因为*k是G[j].neighbor，也就是v_id，所以存的时候，temp的第二个参数是(*k)，而不是G[j].neighbor[*k]
-                        G_matV[it.first].push_back(temp);
+    for(auto &G_item : G){
+        for(auto &edgeInd_item:edgeInd){
+            if(G_item.label == edgeInd_item.first.first){
+                for(auto &node_neighbor:G_item.neighbor){
+                    if(G_Vid_Vlabel[node_neighbor] == edgeInd_item.first.second){
+                        G_matV[edgeInd_item.first].push_back({G_item.id,node_neighbor});
                     }
                 }
             }
@@ -482,79 +547,27 @@ void create_G_matV(){
 
 
 
-//创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
-void create_queryInd(){
-    vector<EdgePairNode*> p;
-    for(auto &it:Pairs){
-        queryInd[it.Q_id].push_back(&it);
-    }
-
-    cout << "QueryInd Create Successfully" <<endl;
-}
 
 
-//为match_tree中的每个节点连接孩子
-void for_each_match_tress_node_add_child(int present_column){
-    if(!Match_tree[present_column+1].empty()){   //如果下一列不为空
-        for(auto &i:Match_tree[present_column]){   //遍历当前列
-            for(auto &j:Match_tree[present_column+1]){   //遍历下一列
-                i.child.push_back(&j);   //把下一列的所有元素都压入当前列的每个节点中
-            }
-        }
-
-        for_each_match_tress_node_add_child(present_column+1);   //递归
-
-    }
-}
-
-
-
-
-//从map_tree里面通过DFS递归获取一条路径，并判断这条路径能否匹配成功（参数说明：1根节点，2用于保存最终获取的单条路径，3最后能够匹配的数量，4保存临时获取的那条Q链表）
-void DFS_get_match_path(MatchTreeNode &root,unordered_map<int,int> &temp_map,int &match_num , vector<EdgePairNode*> &temp_queryInd){
-    temp_map[root.label_id] = root.v_id;    //每次开始，先把root压进去
-    if(!root.child.empty()){        //如果不是叶节点
-        for(auto &it:root.child){    //递归
-            DFS_get_match_path(*it , temp_map , match_num , temp_queryInd);
-        }
-    } else{              //如果是叶节点
-        cout << endl;
-        cout <<"value: ";
-        for(auto &ia:temp_map){
-            cout <<ia.second <<" - ";
-        }
-        cout << endl;
-        cout <<"^^^^^^^^^^^^^^^^^"<<endl;
-        for(auto &it:temp_queryInd){   //遍历当前Q里面的所有边对
-            int query_first_node = it->label_pair.first;   //保存当前边对的第一个节点的label
-            int query_second_node = it->label_pair.second;  //保存当前边对的第二个节点的label
-            int query_first_node_match_map_v_id = temp_map[query_first_node];  //保存当前边对的第一个节点的label在临时map里面的v_id
-            int query_second_node_match_map_v_id = temp_map[query_second_node];  //保存当前边对的第二个节点的label在临时map里面的v_id
-            vector<int> *p = &G[query_first_node_match_map_v_id].neighbor;   //让p指向第一个节点的v_id对应的G图内的所有邻居
-            auto ij = find(p->begin(),p->end(),query_second_node_match_map_v_id);
-            if(ij == p->end()){   //如果在邻居里面没有找到对应的节点，那么后面也不用继续了，这条路径pass
-                return;
-            }
-        }
-
-        match_num += 1 ;  //如果执行到最后都没有提前执行return，说明匹配
-        temp_map.clear(); //开始下一次处理之前，把map清空
-    }
-}
 
 
 //****************************************************************
 //判断子图是否在大图中匹配
-int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  //传参有两个，label和id
+int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){
     int match_num = 0 ;   //保存总共能够匹配的数量
-    vector<EdgePairNode*> p;   //指向edgeInd里面的向量
+
+    vector<EdgePairNode*> edgeInd_p;   //指向edgeInd里面的向量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
-    unordered_map<int,int> temp_Match_map;   //临时保存从树里面遍历得到的match_map
-    vector<EdgePairNode*> temp_queryInd;  //临时保存从queryInd里面遍历得到的一条链表
+//    unordered_map<int,vector<int>> temp_Match_map;   //临时保存从树里面遍历得到的match_map
+    vector<pair<int,int>> temp_queryInd_uid;  //临时保存从queryInd里面遍历得到的一条链表
+//    map<pair<int,int>,bool> temp_queryInd_map;
+//    map<int,vector<pair<int,int>>> core_map;
+    map<pair<int,int>,vector<GmatV_Node>> query_node_map;
+    map<int,int> temp_uid_vid_map;
 
-    p = edgeInd[label_pair];
+    edgeInd_p = edgeInd[label_pair];
 
-    for(auto &it:p){   //遍历所有edgeInd里面的向量
+    for(auto &it:edgeInd_p){   //遍历所有edgeInd里面的向量
         for(auto &ij:it->Q_id_ptr){   //遍历所有edgeInd里面的向量的Q标志
             auto ik = find(affected_Q.begin(),affected_Q.end(),ij);
             if(ik == affected_Q.end()){
@@ -564,111 +577,261 @@ int subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){  /
     }
 
 
-    for(auto &ij :affected_Q){   //遍历受影响的Q
-        for(auto &ik:queryInd[ij]){   //遍历所有的Q里面的节点
-            temp_queryInd.push_back(ik);        //把从queryInd里面遍历取出来的链表存起来
-            for(auto &im:G_matV[ik->label_pair]){   //遍历符合要求的G_matV下的向量
-                //如果有任何一个label能与传进来的label相同，那么就判断他们对应的id是否相同
-                if((ik->label_pair.first == label_pair.first || ik->label_pair.first == label_pair.second) || (ik->label_pair.second == label_pair.first || ik->label_pair.second == label_pair.second)){
-                    //如果是label的first与传进来的相同
-                    if((ik->label_pair.first == label_pair.first || ik->label_pair.first == label_pair.second)){
-                        //那么就判断他们的id是否相同，相同的话就固定住
-                        if(im.first == id_pair.first || im.first == id_pair.second){
-                            auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
-                            if(ix == Match_map[ik->label_pair.first].end()){
-                                Match_map[ik->label_pair.first].push_back(im.first);
-                            }
-                        }
-                    } else{  //如果label的first不同，说明是没有影响的节点，直接保存
-                        auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
-                        if(ix == Match_map[ik->label_pair.first].end()){
-                            Match_map[ik->label_pair.first].push_back(im.first);
-                        }
-                    }
+    for(auto &affected_Q_item :affected_Q){   //遍历受影响的Q
 
-                    //同理，如果是label的second与传进来的相同
-                    if(ik->label_pair.second == label_pair.first || ik->label_pair.second == label_pair.second){
-                        //那么就判断他们的id是否相同，相同的话就固定住
-                        if(im.second == id_pair.first || im.second == id_pair.second){
-                            auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
-                            if(iy == Match_map[ik->label_pair.second].end()){
-                                Match_map[ik->label_pair.second].push_back(im.second);
-                            }
-                        }
-                    } else{   //如果label的second不同，说明是没有影响的节点，直接保存
-                        auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
-                        if(iy == Match_map[ik->label_pair.second].end()){
-                            Match_map[ik->label_pair.second].push_back(im.second);
-                        }
-                    }
-                } else{   //如果label与传进来的label没有一个相同的，那么这个边对一定没有影响，直接把边对的两个节点都存进去
-                    auto ix = find(Match_map[ik->label_pair.first].begin(),Match_map[ik->label_pair.first].end(),im.first);
-                    if(ix == Match_map[ik->label_pair.first].end()){
-                        Match_map[ik->label_pair.first].push_back(im.first);
-                    }
+        //把从queryInd里面遍历取出来的链表存起来(存的是uid，不是label)
+        for(auto &node_item:queryInd[affected_Q_item]){
+            temp_queryInd_uid.push_back(node_item->edge_pair);
+        }
 
-                    auto iy = find(Match_map[ik->label_pair.second].begin(),Match_map[ik->label_pair.second].end(),im.second);
-                    if(iy == Match_map[ik->label_pair.second].end()){
-                        Match_map[ik->label_pair.second].push_back(im.second);
+
+        //把(D,E)固定在向量的第一个位置
+        for(int i =0 ; i < temp_queryInd_uid.size() ; i++){
+            if(Q_Uid_Ulabel[temp_queryInd_uid[i].first] == label_pair.first && Q_Uid_Ulabel[temp_queryInd_uid[i].second] == label_pair.second){
+                swap(temp_queryInd_uid[0],temp_queryInd_uid[i]);
+//                cout << "First queryInd is : < " << temp_queryInd_uid[0].first << " , " <<temp_queryInd_uid[0].second <<" >"<<endl;
+                break;
+            }
+        }
+
+
+
+
+        //对temp_queryInd_uid整形，调整一下顺序，让他能更好的计算
+        vector<int> exist_label;
+        vector<pair<int,int>> temp = temp_queryInd_uid;
+        temp_queryInd_uid.clear();
+
+        exist_label.push_back(temp[0].first);
+        exist_label.push_back(temp[0].second);
+
+        auto i = temp.begin() + 1 ;
+
+
+        for(;i!=temp.end();i++){
+            auto j = i + 1;
+
+            if(find(exist_label.begin(),exist_label.end(),i->first) != exist_label.end() || find(exist_label.begin(),exist_label.end(),i->second) != exist_label.end()){
+                exist_label.push_back(i->first);
+                exist_label.push_back(i->second);
+                continue;
+            } else{
+                for(;j!=temp.end();j++){
+                    if(find(exist_label.begin(),exist_label.end(),j->first) != exist_label.end() || find(exist_label.begin(),exist_label.end(),j->second) != exist_label.end()){
+                        swap(*i,*j);
+                        exist_label.push_back(i->first);
+                        exist_label.push_back(i->second);
+                        break;
                     }
                 }
             }
         }
 
-        //此时已经把当前对应的Q里面所有的点的label_id和v_id都对应存到Match_map里面了
-        //现在开始把Match_map中的所有数据全部迁移到Match_tree中去
-        MatchTreeNode temp_node;   //用于把match_map中的数据包装一下，以便压入match_tree中
-        int count = 0;
-        for(auto &ia:Match_map){
-            for(auto &ib:ia.second){
-                temp_node.v_id = ib;
-                temp_node.label_id = ia.first;
-                Match_tree[count].push_back(temp_node);
-                temp_node.clear();
+        temp_queryInd_uid = temp;
+
+        temp.clear();
+        exist_label.clear();
+
+
+        //开始计算匹配了
+        pair<int,int> uid_pair_pre;
+        pair<int,int> temp_uid_pair;
+        pair<int,int> temp_label_pair;
+        map<int,int> temp_uid_vid;
+        bool is_match = false;
+        bool is_break_loop = false;
+
+        query_node_map.clear();
+
+        //处理query里面的边
+        for(auto &uid_pair:temp_queryInd_uid){
+
+            temp_uid_pair = {uid_pair.first,uid_pair.second};
+            temp_label_pair = {Q_Uid_Ulabel[uid_pair.first],Q_Uid_Ulabel[uid_pair.second]};
+
+            cout << "(" <<temp_uid_pair.first <<" -> " <<temp_uid_pair.second <<")" <<endl;
+
+            //处理传进来的边
+            if(query_node_map.empty()){
+                temp_G_matV[temp_label_pair][0].uid_pair = temp_uid_pair;
+                query_node_map[temp_uid_pair].push_back(temp_G_matV[temp_label_pair][0]);
+                uid_pair_pre = temp_uid_pair;
+                continue;
             }
-            count++;     //count的自加放在这里，而不是"Match_tree[count++].push_back(temp_node)"，因为要保证，相同label的节点要压在同一个vector里面
+
+
+            query_node_map[temp_uid_pair];
+
+            //处理剩下的边
+            for(auto &pre_item:query_node_map[uid_pair_pre]){
+
+                //获取前面所有的uid_vid_map
+                auto *temp_parent = &pre_item;
+                auto *temp_p = &pre_item;
+                temp_uid_vid.clear();
+                while (temp_p != nullptr){
+                    temp_uid_vid[temp_p->uid_pair.first] = temp_p->vid_pair.first;
+                    temp_uid_vid[temp_p->uid_pair.second] = temp_p->vid_pair.second;
+                    temp_p = temp_p->parent;
+                }
+
+
+                //1有2有
+                if(temp_uid_vid.find(temp_uid_pair.first) != temp_uid_vid.end() && temp_uid_vid.find(temp_uid_pair.second) != temp_uid_vid.end()){
+                    auto first_vid = temp_uid_vid[temp_uid_pair.first];
+                    auto second_vid = temp_uid_vid[temp_uid_pair.second];
+                    if(temp_G_matV[temp_label_pair].empty()){
+                        is_break_loop = true;
+                        break;
+                    }else{
+                        for(auto &vector_item:temp_G_matV[temp_label_pair]){
+                            if(vector_item.vid_pair.first == first_vid && vector_item.vid_pair.second == second_vid){
+                                vector_item.uid_pair = temp_uid_pair;
+                                query_node_map[temp_uid_pair].push_back(vector_item);
+                                query_node_map[temp_uid_pair].back().parent = &pre_item;
+//                                pre_item->child.push_back(&vector_item);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                //1有2无
+                if(temp_uid_vid.find(temp_uid_pair.first) != temp_uid_vid.end() && temp_uid_vid.find(temp_uid_pair.second) == temp_uid_vid.end()){
+                    auto first_vid = temp_uid_vid[temp_uid_pair.first];
+                    if(temp_G_matV[temp_label_pair].empty()){
+                        is_break_loop = true;
+                        break;
+                    }else{
+                        for(auto &vector_item:temp_G_matV[temp_label_pair]){
+                            if(vector_item.vid_pair.first == first_vid){
+                                vector<int> temp_Q_neighbor_label;
+                                vector<int> temp_G_neighbor_label;
+                                for(auto &Q_neighbor_id:Q[temp_uid_pair.second].two_way_neighbor){
+                                    temp_Q_neighbor_label.push_back(Q_Uid_Ulabel[Q_neighbor_id]);
+                                }
+                                for(auto &G_neighbor_id:G[vector_item.vid_pair.second].neighbor){
+                                    temp_G_neighbor_label.push_back(G_Vid_Vlabel[G_neighbor_id]);
+                                }
+                                bool is_Q_neighbor_in_G_neighbor = true;
+
+                                for(auto &Q_neighbor_item:temp_Q_neighbor_label){
+                                    auto is_find = find(temp_G_neighbor_label.begin(),temp_G_neighbor_label.end(),Q_neighbor_item);
+                                    if(is_find == temp_G_neighbor_label.end()){
+                                        is_Q_neighbor_in_G_neighbor = false;
+                                        break;
+                                    }
+                                }
+
+                                if(is_Q_neighbor_in_G_neighbor){
+                                    vector_item.uid_pair = temp_uid_pair;
+                                    query_node_map[temp_uid_pair].push_back(vector_item);
+                                    query_node_map[temp_uid_pair].back().parent = &pre_item;
+                                }
+
+//                                vector_item.parent = temp_parent;
+//                                pre_item->child.push_back(&vector_item);
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                //1无2有
+                if(temp_uid_vid.find(temp_uid_pair.first) == temp_uid_vid.end() && temp_uid_vid.find(temp_uid_pair.second) != temp_uid_vid.end()){
+                    auto second_vid = temp_uid_vid[temp_uid_pair.second];
+                    if(temp_G_matV[temp_label_pair].empty()){
+                        is_break_loop = true;
+                        break;
+                    } else{
+                        for(auto &vector_item:temp_G_matV[temp_label_pair]){
+                            if(vector_item.vid_pair.second == second_vid){
+                                vector<int> temp_Q_neighbor_label;
+                                vector<int> temp_G_neighbor_label;
+                                for(auto &Q_neighbor_id:Q[temp_uid_pair.first].two_way_neighbor){
+                                    temp_Q_neighbor_label.push_back(Q_Uid_Ulabel[Q_neighbor_id]);
+                                }
+                                for(auto &G_neighbor_id:G[vector_item.vid_pair.first].neighbor){
+                                    temp_G_neighbor_label.push_back(G_Vid_Vlabel[G_neighbor_id]);
+                                }
+                                bool is_Q_neighbor_in_G_neighbor = true;
+
+                                for(auto &Q_neighbor_item:temp_Q_neighbor_label){
+                                    auto is_find = find(temp_G_neighbor_label.begin(),temp_G_neighbor_label.end(),Q_neighbor_item);
+                                    if(is_find == temp_G_neighbor_label.end()){
+                                        is_Q_neighbor_in_G_neighbor = false;
+                                        break;
+                                    }
+                                }
+
+                                if(is_Q_neighbor_in_G_neighbor){
+                                    vector_item.uid_pair = temp_uid_pair;
+                                    query_node_map[temp_uid_pair].push_back(vector_item);
+                                    query_node_map[temp_uid_pair].back().parent = &pre_item;
+                                }
+
+//                                pre_item->child.push_back(&vector_item);
+                            }
+                        }
+                    }
+                    continue;
+                }
+            }
+
+            if(is_break_loop){
+                break;
+            }
+
+            uid_pair_pre = temp_uid_pair;
         }
 
-        //为每个节点进行连接孩子的操作
-        for_each_match_tress_node_add_child(0);
 
-        //此时Match_tree已经处理好了，现在开始遍历tree，获取单条路径(DFS)
-        for(auto &root:Match_tree[0]){
-            DFS_get_match_path(root , temp_Match_map , match_num , temp_queryInd);//（参数说明在该函数的入口处）
-            temp_Match_map.clear();
+        is_match = true;
+        for(auto &map_item:query_node_map){
+            if(map_item.second.empty()){
+                cout << id_pair.first <<" -> " << id_pair.second << " Not Match !"<<endl;
+                is_match = false;
+                break;
+            }
         }
 
-        temp_queryInd.clear();
-        Match_map.clear();  //每次开始一轮新的Q匹配查询，就把map和tree清空
-        Match_tree.clear();
+        if(is_match){
+            cout << id_pair.first <<" -> " << id_pair.second << " Match !"<<endl;
+            match_num = match_num + 1 ;
+        }
+
+        temp_queryInd_uid.clear();
+        query_node_map.clear();
+
     }
-    return match_num;   //最终返回匹配数量
+
+    return match_num;
+
 }
+
 
 
 
 //****************************************************************
 //加入更新流，并更新G_matV
-void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0"，所以pair里面是v_id
+int update_G_matV(const string& path_of_stream){
+    int match_num;
+    ifstream infile;
+    char single_data;
+    int id1,id2,weight;
     pair<int,int> id_pair;   //保存从stream读取的边对(里面是V_id)
     pair<int,int> label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
 
-    int total_match_num = 0;  //保存匹配图的个数
-
-    char single_data;
-    int id1,id2,weight;
-
-    ifstream infile;
 
     infile.open(path_of_stream);  //打开更新流文件
 
     if(!infile){
         cerr << "Failed To Stream Graph" << endl;  //cerr是std中的标准错误输出（和cout有区别）
-        return;
+        return -1;
     }
 
     while(infile >> single_data){
-        if(single_data=='e'){   //如果遇到了边
+        if(single_data=='e'){
             infile >> id1 >> id2 >> weight;
             id_pair = {id1,id2};   //保存从stream读取的边对
             label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
@@ -685,14 +848,99 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
             //此处开始更新GmatV
             auto it = edgeInd.find(label_pair);
             if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
+                G_matV[label_pair];//先占一个位置
                 auto ik = find(G_matV[label_pair].begin(),G_matV[label_pair].end(),id_pair);
                 if(ik == G_matV[label_pair].end()){     //如果没有重复的，则插入
                     G_matV[label_pair].push_back(id_pair);
                 }
+
                 cout << "Update Successfully : " << id_pair.first << " -> " << id_pair.second <<endl;
 
-                //调用subgraph_total_match_num()函数获取最后的匹配数量
-                total_match_num += subgraph_total_match_num(label_pair,id_pair);    //计算匹配图数量，每插入一条边就计算一次
+                temp_G_matV.clear();
+
+                //在G_matV中只保留和id_pair中相同的存到temp_G_matV里面，总的G_matV保持不动
+                for(auto &G_matV_item:G_matV){
+                    //如果全等于
+                    if(G_matV_item.first == label_pair){
+                        temp_G_matV[G_matV_item.first];//占位置
+                        for(auto &G_matV_vector_item:G_matV_item.second){
+                            if(G_matV_vector_item.first == id_pair.first && G_matV_vector_item.second == id_pair.second){
+                                GmatV_Node node;
+                                node.vid_pair = G_matV_vector_item;
+                                temp_G_matV[G_matV_item.first].push_back(node);
+                            }
+                        }
+                    }
+                    //如果全不等于
+                    else if((G_matV_item.first.first != label_pair.first) && (G_matV_item.first.first != label_pair.second) && (G_matV_item.first.second != label_pair.first) && (G_matV_item.first.second != label_pair.second)){
+                        for(auto &G_matV_vector_item:G_matV_item.second){
+                            GmatV_Node node;
+                            node.vid_pair = G_matV_vector_item;
+                            temp_G_matV[G_matV_item.first].push_back(node);
+                        }
+                    }
+                    //如果只有一个等于
+                    else{
+                        if(G_matV_item.first.first == label_pair.first){
+                            for(auto &G_matV_vector_item:G_matV_item.second){
+                                temp_G_matV[G_matV_item.first];//占位
+                                if(G_matV_vector_item.first == id_pair.first){
+                                    GmatV_Node node;
+                                    node.vid_pair = G_matV_vector_item;
+                                    temp_G_matV[G_matV_item.first].push_back(node);
+                                }
+                            }
+                        }
+
+                        if(G_matV_item.first.first == label_pair.second){
+                            for(auto &G_matV_vector_item:G_matV_item.second){
+                                temp_G_matV[G_matV_item.first];//占位
+                                if(G_matV_vector_item.first == id_pair.second){
+                                    GmatV_Node node;
+                                    node.vid_pair = G_matV_vector_item;
+                                    temp_G_matV[G_matV_item.first].push_back(node);
+                                }
+                            }
+                        }
+
+                        if(G_matV_item.first.second == label_pair.first){
+                            for(auto &G_matV_vector_item:G_matV_item.second){
+                                temp_G_matV[G_matV_item.first];//占位
+                                if(G_matV_vector_item.second == id_pair.first){
+                                    GmatV_Node node;
+                                    node.vid_pair = G_matV_vector_item;
+                                    temp_G_matV[G_matV_item.first].push_back(node);
+                                }
+                            }
+                        }
+
+                        if(G_matV_item.first.second == label_pair.second){
+                            for(auto &G_matV_vector_item:G_matV_item.second){
+                                temp_G_matV[G_matV_item.first];//占位
+                                if(G_matV_vector_item.second == id_pair.second){
+                                    GmatV_Node node;
+                                    node.vid_pair = G_matV_vector_item;
+                                    temp_G_matV[G_matV_item.first].push_back(node);
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+//                for(auto &i:temp_G_matV){
+//                    cout << i.second.size() <<endl;
+//                }
+
+                cout << "G_matV Trim Complete" <<endl;
+
+//                auto ii = find(G_matV[{2,17}].begin(),G_matV[{2,17}].end(),{2,2175});
+
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
+
+//                cout << "Match Num is : " << match_num <<endl;
+
+
 
             } else{          //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
                 cout << "Not Affected Q : " << id_pair.first << " -> " << id_pair.second  <<endl;
@@ -702,10 +950,9 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
 
 
 
-    cout << "Total Match Num Is : " << total_match_num << endl;
-
-
+    return match_num;
 }
+
 
 
 
@@ -715,9 +962,17 @@ void update_G_matV(const string& path_of_stream){   //stream的格式是"e 5 7 0
 
 int main(){
     cout << "########################################################" <<endl;
+//    string path_of_data_graph = R"(E:\GraphQuery C++\TestData\data-graph.txt)";
+//    string path_of_query_graph = R"(E:\GraphQuery C++\TestData\multi-query.txt)";
+//    string path_of_stream = R"(E:\GraphQuery C++\TestData\stream.txt)";
+//
     string path_of_data_graph = R"(E:\GraphQuery C++\Data\data-graph.txt)";
     string path_of_query_graph = R"(E:\GraphQuery C++\Data\multi-query.txt)";
     string path_of_stream = R"(E:\GraphQuery C++\Data\stream.txt)";
+
+//    string path_of_data_graph = R"(E:\GraphQuery C++\Data2\data-graph.txt)";
+//    string path_of_query_graph = R"(E:\GraphQuery C++\Data2\multi-query.txt)";
+//    string path_of_stream = R"(E:\GraphQuery C++\Data2\stream.txt)";
 
     inputG(path_of_data_graph);
     inputQ(path_of_query_graph);
@@ -732,16 +987,17 @@ int main(){
 
     create_rootInd();   //创建rootInd索引
 
-    create_edgeInd();  //创建edgeInd索引
-
     create_queryInd();  //创建queryInd索引
+
+    create_edgeInd();  //创建edgeInd索引
 
     create_G_matV();   //创建物化视图
 
     cout << "********************************************************" <<endl;
 
+    int total_match_num = update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
 
-    update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
+    cout << "Total Match Num Is : " << total_match_num << endl;
 
     return 0;
 }
