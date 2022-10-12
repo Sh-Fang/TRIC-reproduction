@@ -1,0 +1,59 @@
+memory usage of constr_index: 69.5273MB
+39 positive matches.
+0 negative matches.
+Incremental Matching: 224.386ms
+finishing amazon/single_query/ol_0.2/Q_0 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.6016MB
+64 positive matches.
+0 negative matches.
+Incremental Matching: 211.124ms
+finishing amazon/single_query/ol_0.2/Q_1 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5859MB
+26 positive matches.
+0 negative matches.
+Incremental Matching: 230.954ms
+finishing amazon/single_query/ol_0.2/Q_2 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5273MB
+20 positive matches.
+0 negative matches.
+Incremental Matching: 207.288ms
+finishing amazon/single_query/ol_0.2/Q_3 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5312MB
+40 positive matches.
+0 negative matches.
+Incremental Matching: 213.382ms
+finishing amazon/single_query/ol_0.2/Q_4 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5859MB
+44 positive matches.
+0 negative matches.
+Incremental Matching: 216.135ms
+finishing amazon/single_query/ol_0.2/Q_5 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5859MB
+36 positive matches.
+0 negative matches.
+Incremental Matching: 211.808ms
+finishing amazon/single_query/ol_0.2/Q_6 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.8438MB
+40 positive matches.
+0 negative matches.
+Incremental Matching: 209.639ms
+finishing amazon/single_query/ol_0.2/Q_7 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.0156MB
+22 positive matches.
+0 negative matches.
+Incremental Matching: 218.658ms
+finishing amazon/single_query/ol_0.2/Q_8 ins_0.1/ turboflux
+
+memory usage of constr_index: 69.5273MB
+70 positive matches.
+0 negative matches.
+Incremental Matching: 203.863ms
+finishing amazon/single_query/ol_0.2/Q_9 ins_0.1/ turboflux
