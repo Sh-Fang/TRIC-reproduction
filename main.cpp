@@ -169,6 +169,7 @@ unordered_map<int,vector<EdgePairNode>> queryInd;   //key是Qid，value是n节�
 
 map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 
+map<unsigned long long,unsigned long long> Match_Num_Map;   //记录不同Q对应的匹配次数
 //*****************************************************************
 
 
@@ -221,6 +222,9 @@ void inputG(const string& path_of_data_graph){
 
 
 
+
+
+
 //****************************************************************
 //加载查询图
 void inputQ(const string& path_of_query_graph){
@@ -264,6 +268,12 @@ void inputQ(const string& path_of_query_graph){
 
 
 
+
+
+
+
+
+
 //****************************************************************
 //创建边对节点
 void create_edge_pair_vector(){
@@ -300,6 +310,8 @@ void create_edge_pair_vector(){
 
     cout << "EdgePair Create Successfully" << endl;
 }
+
+
 
 
 
@@ -348,6 +360,7 @@ void create_Pi_chain(){
 
     cout << "PiChain Create Successfully" << endl;
 }
+
 
 
 
@@ -426,6 +439,11 @@ void create_rootInd(){
 }
 
 
+
+
+
+
+
 //创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
 void create_queryInd(){
     EdgePairNode temp_node;
@@ -440,6 +458,11 @@ void create_queryInd(){
 
 
 
+
+
+
+
+
 //建立edgeInd索引（用最简单的方法，直接从queryInd里面获取边对）
 void create_edgeInd(){
     for(auto & queryInd_key : queryInd){
@@ -450,6 +473,13 @@ void create_edgeInd(){
 
     cout << "EdgeInd Create Successfully" <<endl;
 }
+
+
+
+
+
+
+
 
 
 //****************************************************************
@@ -472,6 +502,9 @@ void create_G_matV(){
 
     cout << "G_matV Create Successfully" <<endl;
 }
+
+
+
 
 
 
@@ -530,6 +563,9 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
             }
         }
     }
+
+
+
 
 
     for(auto &affected_Q_item :affected_Q){   //遍历受影响的Q
@@ -602,6 +638,11 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
 
 
+
+
+
+
+
                 //开始计算匹配了
                 pair<int,int> uid_pair_pre;   //指向上一次处理的那个uid_pair的指针
                 pair<int,int> temp_uid_pair;
@@ -629,6 +670,9 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                         uid_pair_pre = temp_uid_pair;
                         continue;
                     }
+
+
+
 
                     query_node_map[temp_uid_pair];  //占位置
 
@@ -728,6 +772,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                             continue;
                         }
 
+
                         //1无2有
                         if(temp_uid_vid.find(temp_uid_pair.first) == temp_uid_vid.end() && temp_uid_vid.find(temp_uid_pair.second) != temp_uid_vid.end()){
                             auto second_vid = temp_uid_vid[temp_uid_pair.second];
@@ -743,10 +788,12 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                                         temp_Q_neighbor_label.push_back(Q_Uid_Ulabel[another_Q_neighbor_id_item]);
                                     }
 
+
                                     for(auto &another_G_neighbor_id_item:G[G_neighbor_id_item].two_way_neighbor_id){
                                         temp_G_neighbor_id.push_back(another_G_neighbor_id_item);
                                         temp_G_neighbor_label.push_back(G_Vid_Vlabel[another_G_neighbor_id_item]);
                                     }
+
 
                                     bool is_Q_neighbor_label_in_G_neighbor_label = true;
                                     bool is_Q_neighbor_id_in_G_neighbor_id = true;
@@ -757,6 +804,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                                             break;
                                         }
                                     }
+
 
 
                                     if(is_Q_neighbor_label_in_G_neighbor_label){  //代表Q中全部的label都在G中找到了
@@ -797,6 +845,8 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                 }
 
 
+
+
                 is_match = true;
                 for(auto &map_item:query_node_map){
                     if(map_item.second.empty()){
@@ -810,10 +860,9 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                     pair<int,int> last_query_id_pair = {temp_queryInd_uid.back().first,temp_queryInd_uid.back().second};
                     match_num = match_num + query_node_map[last_query_id_pair].size();
                     cout << "this edge matches : " << query_node_map[last_query_id_pair].size() <<endl;
-                    print_match_tree(query_node_map,last_query_id_pair);
-
+//                    print_match_tree(query_node_map,last_query_id_pair);
+                    Match_Num_Map[affected_Q_item] = Match_Num_Map[affected_Q_item] + query_node_map[last_query_id_pair].size();
                     cout <<endl;
-
                 }
             }
         }
@@ -822,6 +871,8 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
     return match_num;
 
 }
+
+
 
 
 
@@ -918,7 +969,7 @@ int main(){
 //    string path_of_stream = R"(E:\GraphQuery C++\TestData\stream.txt)";
 //
     string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
-    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_9 )";
+    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";
     string path_of_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
 
 //    string path_of_data_graph = R"(E:\GraphQuery C++\Data2\data-graph.txt)";
@@ -928,7 +979,7 @@ int main(){
     inputG(path_of_data_graph);
     inputQ(path_of_query_graph);
 
-    cout << "********************************************************" <<endl;
+     cout << "********************************************************" <<endl;
 
     create_edge_pair_vector();  //创建边对向量
 
@@ -949,6 +1000,7 @@ int main(){
     unsigned long long total_match_num = update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
 
     cout << "Total Match Num Is : " << total_match_num << endl;
+
 
     return 0;
 }
