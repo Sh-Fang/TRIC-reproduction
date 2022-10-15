@@ -163,7 +163,7 @@ vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面�
 vector<PiChain> P;   //存放所有Pi的向量（同一个Q_id的Pi存放在同一个向量里）
 unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
-map<pair<int,int>,vector<EdgePairNode*>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
+map<pair<int,int>,vector<int>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
 
 unordered_map<int,vector<EdgePairNode>> queryInd;   //key是Qid，value是n节点
 
@@ -465,11 +465,17 @@ void create_queryInd(){
 
 //建立edgeInd索引（用最简单的方法，直接从queryInd里面获取边对）
 void create_edgeInd(){
-    for(auto & queryInd_key : queryInd){
-        for(auto &queryInd_value:queryInd_key.second){
-            edgeInd[queryInd_value.label_pair].push_back(&queryInd_value);
+    for(auto &pair_item:Pairs){
+        edgeInd[pair_item.label_pair];
+        if(find(edgeInd[pair_item.label_pair].begin(),edgeInd[pair_item.label_pair].end(),pair_item.Q_id) == edgeInd[pair_item.label_pair].end()){
+            edgeInd[pair_item.label_pair].push_back(pair_item.Q_id);
         }
     }
+//    for(auto & queryInd_key : queryInd){
+//        for(auto &queryInd_value:queryInd_key.second){
+//            edgeInd[queryInd_value.label_pair].push_back(&queryInd_value);
+//        }
+//    }
 
     cout << "EdgeInd Create Successfully" <<endl;
 }
@@ -548,19 +554,17 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
     unsigned long long match_num = 0 ;   //保存总共能够匹配的数量
 
-    vector<EdgePairNode*> edgeInd_p;   //指向edgeInd里面的向量
+//    vector<int*> edgeInd_p;   //指向edgeInd里面的向量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
     vector<pair<int,int>> temp_queryInd_uid;  //临时保存从queryInd里面遍历得到的一条链表
     vector<pair<int,int>> temp_queryInd_uid_backup;   //temp_queryInd_uid的备份
 
-    edgeInd_p = edgeInd[label_pair];  //指向edgeInd里面的向量
+//    edgeInd_p = edgeInd[label_pair];  //指向edgeInd里面的向量
 
-    for(auto &it:edgeInd_p){   //遍历所有edgeInd里面的向量
-        for(auto &ij:it->Q_id_ptr){   //遍历所有edgeInd里面的向量的Q标志
-            auto ik = find(affected_Q.begin(),affected_Q.end(),ij);
-            if(ik == affected_Q.end()){
-                affected_Q.push_back(ij);   //记录本次更新中受影响的Q
-            }
+    for(auto &it:edgeInd[label_pair]){   //遍历所有edgeInd里面的向量
+        auto ij = find(affected_Q.begin(),affected_Q.end(),it);
+        if(ij == affected_Q.end()){
+            affected_Q.push_back(it);   //记录本次更新中受影响的Q
         }
     }
 
@@ -571,14 +575,22 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
     for(auto &affected_Q_item :affected_Q){   //遍历受影响的Q
 
         //把从queryInd里面遍历取出来的链表存起来(存的是uid，不是label)
+        temp_queryInd_uid.clear();
+//        cout << "**************"<<endl;
+//        cout << "Q_" << affected_Q_item <<" : ";
         for(auto &pair_node_item:queryInd[affected_Q_item]){
             temp_queryInd_uid.push_back(pair_node_item.id_pair);
+//            cout << "(" << pair_node_item.id_pair.first <<"," <<pair_node_item.id_pair.second <<") ";
         }
+//        cout <<endl;
+//        cout << "Total edges : " << temp_queryInd_uid.size() <<endl;
+
 
 
         //把更新传进来的边(X,Y)固定在向量的第一个位置
         temp_queryInd_uid_backup = temp_queryInd_uid;
 
+        int edge_count = 1;
         for(int i =0 ; i < temp_queryInd_uid.size() ; i++){
             if((Q_Uid_Ulabel[temp_queryInd_uid[i].first] == label_pair.first && Q_Uid_Ulabel[temp_queryInd_uid[i].second] == label_pair.second) || (Q_Uid_Ulabel[temp_queryInd_uid[i].first] == label_pair.second && Q_Uid_Ulabel[temp_queryInd_uid[i].second] == label_pair.first)){
 
@@ -652,6 +664,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                 bool is_match = false;
                 bool is_break_loop = false;
 
+
                 query_node_map.clear();
 
                 //处理query里面的边
@@ -660,7 +673,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                     temp_uid_pair = {uid_pair.first,uid_pair.second};
                     temp_label_pair = {Q_Uid_Ulabel[uid_pair.first],Q_Uid_Ulabel[uid_pair.second]};
 
-
+//                    cout << edge_count++ << ". (" <<temp_uid_pair.first <<" -> " <<temp_uid_pair.second <<")" <<endl;
                     //处理传进来的边
                     if(query_node_map.empty()){
                         GmatV_Node node;
@@ -856,13 +869,13 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                 }
 
                 if(is_match){
-                    cout << id_pair.first <<" -> " << id_pair.second << " Matched !   Q : " << affected_Q_item<<endl;
+//                    cout << id_pair.first <<" -> " << id_pair.second << " Matched !   Q : " << affected_Q_item<<endl;
                     pair<int,int> last_query_id_pair = {temp_queryInd_uid.back().first,temp_queryInd_uid.back().second};
                     match_num = match_num + query_node_map[last_query_id_pair].size();
-                    cout << "this edge matches : " << query_node_map[last_query_id_pair].size() <<endl;
+//                    cout << "this edge matches : " << query_node_map[last_query_id_pair].size() <<endl;
 //                    print_match_tree(query_node_map,last_query_id_pair);
                     Match_Num_Map[affected_Q_item] = Match_Num_Map[affected_Q_item] + query_node_map[last_query_id_pair].size();
-                    cout <<endl;
+//                    cout <<endl;
                 }
             }
         }
@@ -926,7 +939,7 @@ unsigned long long update_G_matV(const string& path_of_stream){
                     if(ik == G_matV[label_pair].end()){     //如果没有重复的，则插入
                         G_matV[label_pair].push_back(id_pair);
                     }
-
+//                    cout << "Update Successfully : " << id_pair.first << " -> " << id_pair.second <<endl;
                     match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
                 }
 
@@ -941,10 +954,9 @@ unsigned long long update_G_matV(const string& path_of_stream){
                         if(ik == G_matV[reverse_label_pair].end()){     //如果没有重复的，则插入
                             G_matV[reverse_label_pair].push_back(reverse_id_pair);
                         }
-
+//                        cout << "Update Successfully : " << reverse_id_pair.first << " -> " << reverse_id_pair.second <<endl;
                         match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
                     }
-
                 }
 
             }
@@ -969,7 +981,7 @@ int main(){
 //    string path_of_stream = R"(E:\GraphQuery C++\TestData\stream.txt)";
 //
     string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
-    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";
+    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";  //multi
     string path_of_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
 
 //    string path_of_data_graph = R"(E:\GraphQuery C++\Data2\data-graph.txt)";
@@ -999,7 +1011,12 @@ int main(){
 
     unsigned long long total_match_num = update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
 
+    for(auto &it:Match_Num_Map){
+        cout << "Q_"<< it.first << " : " <<it.second <<endl;
+    }
+
     cout << "Total Match Num Is : " << total_match_num << endl;
+
 
 
     return 0;
