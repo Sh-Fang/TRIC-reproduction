@@ -1,3 +1,4 @@
-# 说明
+#说明
+Data文件夹是main.cpp用到的数据文件
+Tools文件夹存放的是工具程序，具体用法见程序开头注释
 main.cpp是程序文件，在根目录下，为单文件。
-Data是main.cpp用到的数据文件(Data文件夹中的combine_Q.cpp是把多个Q整合成一个Q的程序)
