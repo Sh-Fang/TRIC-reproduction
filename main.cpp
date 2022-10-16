@@ -1,6 +1,6 @@
 #include <iostream>
 #include <fstream>  //文件操作库
-#include <algorithm>  //find_if库
+#include <algorithm>  //find()库
 #include <vector>   //向量库
 #include <unordered_map>  //无序哈希表map
 #include <map>
@@ -65,7 +65,6 @@ public:
 class EdgePairNode{
 public:
     int Q_id;      //即：这条边属于哪个Q
-    vector<int> Q_id_ptr;  //即：{Q}这种标识符，用empty来判断是否有元素
     int first_node_in_degree;   //边对中第一个节点的入度 <D,E>
     int second_node_out_degree; //边对中第二个节点的出度
     pair<int,int> label_pair;
@@ -78,66 +77,18 @@ public:
         this->Q_id = -1;
     }
 
-    void Q_id_ptr_Push_Back(int id){  //在压入Q_id_ptr时候进行判断，向量中是否有重复的元素
-        auto it = find(this->Q_id_ptr.begin(),this->Q_id_ptr.end(),id);
-        if(it == this->Q_id_ptr.end()){  //如果找不到重复元素，那么就压进去
-            this->Q_id_ptr.push_back(id);
-        }
-    }
 
     void clear(){
         this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
         this->second_node_out_degree = 0;
         this->Q_id = -1;
-        this->Q_id_ptr.clear();
         this->child.clear();
     }
 };
 
 
-
-
-
 //*****************************************************************
-//Pi链表
-class PiChain{
-public:
-    int length;  //当前这条链表的长度
-    int Q_id;    //这条链表属于哪个Q
-    EdgePairNode *p,*pre,*head;
-public:
-    PiChain(){     //初始化链表
-        this->Q_id = -1;
-        this->length = 0;
-        this->head = this->p = this->pre = nullptr;
-    }
-    void add_node(EdgePairNode &node){    //链表中添加节点
-        p = &node;
-        if(this->head == nullptr){  //此时链表为空
-            this->head = p;
-            pre = p;
-            this->length += 1;
-            this->Q_id = node.Q_id;
-        } else{
-            auto it = find(pre->child.begin(),pre->child.end(),p);
-            if(it == pre->child.end()){   //如果没有找到重复的元素，那么就插入
-                pre->child.push_back(p);
-                pre = p;
-                this->length += 1;
-                this->Q_id = node.Q_id;
-            }
-        }
-    }
-
-    void clear_chain(){
-        this->Q_id = -1;
-        this->length = 0;
-        head = p = pre = nullptr;
-    }
-};
-
-
-
+//
 class GmatV_Node{
 public:
     pair<int,int> vid_pair;
@@ -157,17 +108,13 @@ vector<GNode> G;   //初始化数据图:G用向量存
 unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应关系(key是V_id)
 vector<QNode> Q;   //初始化多重查询图
 unordered_map<int,int> Q_Uid_Ulabel;
+vector<pair<int,int>> S; //保存更新图
 
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
-
-vector<PiChain> P;   //存放所有Pi的向量（同一个Q_id的Pi存放在同一个向量里）
-unordered_map<int,PiChain> PTrees;   //key是Ti的编号，value是Pi链
 
 map<pair<int,int>,vector<int>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
 
 unordered_map<int,vector<EdgePairNode>> queryInd;   //key是Qid，value是n节点
-
-map<pair<int,int>,vector<pair<int,int>>> G_matV;    //key是label_pair，value是顶点对
 
 map<unsigned long long,unsigned long long> Match_Num_Map;   //记录不同Q对应的匹配次数
 //*****************************************************************
@@ -272,6 +219,31 @@ void inputQ(const string& path_of_query_graph){
 
 
 
+void inputS(const string& path_of_update_stream){
+    char single_data;  //定义单个字符的变量，用来储存读入的数据
+    ifstream infile;
+    int e_id1,e_id2,e_weight;  //用于保存e和v开头的数据
+    pair<int,int> edge_node;
+
+    infile.open(path_of_update_stream);  //打开查询图文件
+
+    if(!infile){
+        cerr << "Failed To Open Stream" << endl;  //cerr是std中的标准错误输出（和cout有区别）
+        return;
+    }
+
+    while(infile >> single_data){
+        if(single_data=='e'){
+            infile >> e_id1 >> e_id2 >> e_weight;
+            edge_node = {e_id1,e_id2};
+            S.push_back(edge_node);
+        }
+    }
+    cout << "Update Stream Loading Successfully" << endl;
+}
+
+
+
 
 
 //****************************************************************
@@ -281,7 +253,7 @@ void create_edge_pair_vector(){
     for(auto &Q_item:Q){
         for(auto &Q_item_neighbor:Q_item.one_way_neighbor_id){
             e_node.Q_id = Q_item.Q_id;
-            e_node.Q_id_ptr.push_back(Q_item.Q_id);  //先把自己的Qid压进去
+//            e_node.Q_id_ptr.push_back(Q_item.Q_id);  //先把自己的Qid压进去
             e_node.id_pair = {Q_item.u_id, Q_item_neighbor};
             e_node.label_pair = {Q_item.u_label, Q_Uid_Ulabel[Q_item_neighbor]};
             Pairs.push_back(e_node);
@@ -315,135 +287,6 @@ void create_edge_pair_vector(){
 
 
 
-
-
-
-//*****************************************************************
-//将边对添加到链表中去
-void create_Pi_chain(){
-    PiChain Pc;   //实例化一个链表
-    int pre,p,q;
-    pre = 0;
-    while(pre < Pairs.size()){   //pre是单向的，只向前移动，不回头，一次移动一个单位
-        q = 0;                  //q是循环指针，每次都从0开始，一直到结尾
-        p = pre;                //p是临时工作指针，如果q找到了连起来的边，那么就把p指向q；每次处理开始，让p回到pre的位置
-        if(Pairs[pre].first_node_in_degree == 0){    //如果第一节点入度为0，那么一定是起点
-            Pc.add_node(Pairs[pre]);             //先把起点存起来（因为在add_node这个函数里面，我已经写了“重复了就不往里面存”的判断，所以可以放心的往里面存）
-            if(Pairs[pre].second_node_out_degree == 0){    //如果第一节点入度为0的同时，第二节点也为0，那么就是单边
-                P.push_back(Pc);     //因为是单边，所以可以直接把链表压入P向量中
-                Pc.clear_chain();   //清空链表(每压入一次，就清空一次)
-                pre++ ;              //每压入链表一次，就让pre向后移动一个
-                continue;            //pre移动以后，就可以直接开始下一次处理了
-            }
-        } else{            //如果第一节点入度不为0，说明不是起点，而是中间的点
-            pre++;         //因为这个位置的代码是最开头，如果这个地方就遇到了中间节点，那么直接就可以pre++了
-            continue;
-        }
-
-        while(q < Pairs.size()){    //q这个循环指针
-            if(Pairs[p].Q_id == Pairs[q].Q_id){
-                if(Pairs[p].id_pair.second == Pairs[q].id_pair.first){
-                    Pc.add_node(Pairs[q]);
-                    p = q;            //如果q找到了可以配对的边，就让p指向q的位置
-                    q = 0;            //为下一次的处理做准备，让q回到0的位置
-                    continue;
-                }
-            }
-            q++;           //如果Qid不同，就让q继续往下
-        }
-
-        P.push_back(Pc);     //把链表压入P向量中
-        Pc.clear_chain();   //清空链表(每压入一次，就清空一次)
-        pre++;             //每次压入链表后，就让pre++
-    }
-
-
-    cout << "PiChain Create Successfully" << endl;
-}
-
-
-
-
-
-
-//****************************************************************
-//建立rootInd索引
-void create_rootInd(){
-    PiChain P1;  //P1的作用就是临时获取Pi链表
-    int Tree_id = 0; //用于判定在map的第几个位置上新建一颗树
-    EdgePairNode *Tp;   //指向树Ti的指针
-    EdgePairNode *Pp;   //指向P1链表的指针
-    bool is_create_a_new_tree;  //用于控制是否新建一棵树的开关
-    bool is_joint_rest_node_to_tree = true;   //用于控制是否将链表剩下的节点拼接到树上的开关（默认为true）
-
-    for(auto i = 0 ; i < P.size() ; i++){
-        P1 = P[i];   //P1的作用就是临时获取Pi链表
-        if(PTrees.empty()){   //如果map为空，那么就让第一条Pi直接存到map里面去
-            PTrees.insert(pair<int,PiChain>{Tree_id,P1});
-            P1.clear_chain();
-            Tree_id++;   //Tree_id++是让下一次从第二个位置开始建树
-        }
-        else{
-            if(P1.length == 1){   //如果是一条单边，也可以直接新建一棵树存进去
-                PTrees.insert(pair<int,PiChain>{Tree_id,P1});
-                P1.clear_chain();
-                Tree_id++;
-            }
-            else{    //如果长度大于1，就挨个遍历看看有没有起点一样的
-                //先把Tp和Pp两个指针定好位（先检查所有已经存在的树的第一个节点是否相同）
-                for(auto j = 0 ; j < Tree_id ; j++){
-                    if(PTrees[j].head->label_pair == P1.head->label_pair){  //如果找到了起点相同的，就不用往后找了
-                        is_create_a_new_tree = false;   //不用新建一棵树
-                        Tp = PTrees[j].head;   //定位指针
-                        Pp = P1.head;
-                        break;
-                    }
-                    else{
-                        is_create_a_new_tree = true; //需要新建一棵树
-                    }
-                }
-
-
-                if(is_create_a_new_tree){   //如果最后它的值都是true，那么就表示，整个for循环之中没有找到起点相同的节点
-                    PTrees.insert(pair<int,PiChain>{Tree_id,P1});   //新建一棵树存进去
-                    P1.clear_chain();
-                    Tree_id++;
-                } else{  //如果最后它的值都是false，说明找到了起点相同的节点，而且定位好了两个指针
-                    while(Tp){
-                        Tp->Q_id_ptr_Push_Back(Pp->Q_id);  //处理根节点（把P链表中与Ptree树中相同的节点的Qid压进去）
-
-                        if(!Pp->child.empty()){
-                            Pp = Pp->child[0];    //先让P链表的指针向后移动一个
-                        } else{
-                            break;
-                        }
-
-                        //接下来向下进行BFS
-                        if(!Tp->child.empty()){
-                            for(auto k = 0 ; k < Tp->child.size() ; k++){  //遍历所有孩子节点(BFS)
-                                if(Tp->child[k]->label_pair == Pp->label_pair){  //注意：这里只是建立rootInd，只要起点不同，就不用往下遍历了（不用考虑后面有重复节点遍历不到的问题）
-                                    Tp->child[k]->Q_id_ptr_Push_Back(Pp->Q_id);  //把有公共节点的另一条链表的Qid存进去
-                                    Tp = Tp->child[k];
-                                }
-                            }
-                        } else{    //如果遍历到这棵树的叶节点，那么就直接把剩余的链表压入叶节点后面
-                            Tp->child.push_back(Pp);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    cout << "RootInd Create Successfully" << endl;
-}
-
-
-
-
-
-
-
 //创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
 void create_queryInd(){
     EdgePairNode temp_node;
@@ -466,16 +309,24 @@ void create_queryInd(){
 //建立edgeInd索引（用最简单的方法，直接从queryInd里面获取边对）
 void create_edgeInd(){
     for(auto &pair_item:Pairs){
-        edgeInd[pair_item.label_pair];
-        if(find(edgeInd[pair_item.label_pair].begin(),edgeInd[pair_item.label_pair].end(),pair_item.Q_id) == edgeInd[pair_item.label_pair].end()){
-            edgeInd[pair_item.label_pair].push_back(pair_item.Q_id);
+
+        pair<int,int> label_pair = pair_item.label_pair;
+        pair<int,int> reverse_label_pair = {pair_item.label_pair.second,pair_item.label_pair.first};
+
+        if(edgeInd.find(label_pair) == edgeInd.end()){   //正着找不到
+            if(edgeInd.find(reverse_label_pair) != edgeInd.end()){   //反着找到了
+                if(find(edgeInd[reverse_label_pair].begin(),edgeInd[reverse_label_pair].end(),pair_item.Q_id) == edgeInd[reverse_label_pair].end()){  //如果里面没有重复的点
+                    edgeInd[reverse_label_pair].push_back(pair_item.Q_id);  //把Qid保存到那个反着的地方
+                }
+            } else{   //反着也找不到，说明edgeInd里面没有，直接保存
+                edgeInd[label_pair].push_back(pair_item.Q_id);
+            }
+        } else{  //正着能找到，则判断是否有重复并插进去
+            if(find(edgeInd[label_pair].begin(),edgeInd[label_pair].end(),pair_item.Q_id) == edgeInd[label_pair].end()){
+                edgeInd[pair_item.label_pair].push_back(pair_item.Q_id);
+            }
         }
     }
-//    for(auto & queryInd_key : queryInd){
-//        for(auto &queryInd_value:queryInd_key.second){
-//            edgeInd[queryInd_value.label_pair].push_back(&queryInd_value);
-//        }
-//    }
 
     cout << "EdgeInd Create Successfully" <<endl;
 }
@@ -484,45 +335,8 @@ void create_edgeInd(){
 
 
 
-
-
-
-
-//****************************************************************
-//对初始数据图建立MatV视图
-void create_G_matV(){
-    for(auto &edgeInd_item:edgeInd){
-        G_matV[edgeInd_item.first];   //占位，保证edgeInd里面所有的key都在matV里面
-    }
-
-    for(auto &G_item : G){
-        for(auto &node_neighbor:G_item.two_way_neighbor_id){
-            pair<int,int> label_pair = {G_item.v_label,G_Vid_Vlabel[node_neighbor]};
-            if(edgeInd.find(label_pair) != edgeInd.end()){
-                G_matV[label_pair].push_back({G_item.v_id, node_neighbor});
-            }
-        }
-    }
-
-
-
-    cout << "G_matV Create Successfully" <<endl;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 //***************************************
-
+//调试的时候用来输出每次可以成功匹配时候的完整Q路径
 map<int,int> uid_vid;
 
 void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pair<int,int> &last_pair){
@@ -553,13 +367,10 @@ void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pa
 unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){
 
     unsigned long long match_num = 0 ;   //保存总共能够匹配的数量
-
-//    vector<int*> edgeInd_p;   //指向edgeInd里面的向量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
     vector<pair<int,int>> temp_queryInd_uid;  //临时保存从queryInd里面遍历得到的一条链表
     vector<pair<int,int>> temp_queryInd_uid_backup;   //temp_queryInd_uid的备份
 
-//    edgeInd_p = edgeInd[label_pair];  //指向edgeInd里面的向量
 
     for(auto &it:edgeInd[label_pair]){   //遍历所有edgeInd里面的向量
         auto ij = find(affected_Q.begin(),affected_Q.end(),it);
@@ -570,21 +381,13 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
 
 
-
-
     for(auto &affected_Q_item :affected_Q){   //遍历受影响的Q
 
-        //把从queryInd里面遍历取出来的链表存起来(存的是uid，不是label)
         temp_queryInd_uid.clear();
-//        cout << "**************"<<endl;
-//        cout << "Q_" << affected_Q_item <<" : ";
+        //把从queryInd里面遍历取出来的链表存起来(存的是uid，不是label)
         for(auto &pair_node_item:queryInd[affected_Q_item]){
             temp_queryInd_uid.push_back(pair_node_item.id_pair);
-//            cout << "(" << pair_node_item.id_pair.first <<"," <<pair_node_item.id_pair.second <<") ";
         }
-//        cout <<endl;
-//        cout << "Total edges : " << temp_queryInd_uid.size() <<endl;
-
 
 
         //把更新传进来的边(X,Y)固定在向量的第一个位置
@@ -648,24 +451,21 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                 temp.clear();
                 exist_uid.clear();
 
-
-
-
-
+                //到此，边的顺序都调整好了
 
 
 
                 //开始计算匹配了
                 pair<int,int> uid_pair_pre;   //指向上一次处理的那个uid_pair的指针
-                pair<int,int> temp_uid_pair;
-                pair<int,int> temp_label_pair;
+                pair<int,int> temp_uid_pair;  //用于临时保存Q中的uid_pair
+                pair<int,int> temp_label_pair;  //用于临时保存Q中的label_pair
                 map<int,int> temp_uid_vid;   //用于临时保存query_node_map里面uid和vid的对应关系（用来固定点）
-                map<pair<int,int>,vector<GmatV_Node>> query_node_map;  //用于保存uid_pair对应的G里面的vid_pair
-                bool is_match = false;
-                bool is_break_loop = false;
+                map<pair<int,int>,vector<GmatV_Node>> query_node_map;  //用于保存uid_pair对应的G里面的vid_pair（建立Q和G的联系）
+                bool is_match = false;     //判断最终是否匹配的标志
+                bool is_break_loop = false;  //判断是否结束循环的标志
 
 
-                query_node_map.clear();
+                query_node_map.clear();  //每次开始处理前清理脏数据
 
                 //处理query里面的边
                 for(auto &uid_pair:temp_queryInd_uid){
@@ -673,28 +473,28 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                     temp_uid_pair = {uid_pair.first,uid_pair.second};
                     temp_label_pair = {Q_Uid_Ulabel[uid_pair.first],Q_Uid_Ulabel[uid_pair.second]};
 
-//                    cout << edge_count++ << ". (" <<temp_uid_pair.first <<" -> " <<temp_uid_pair.second <<")" <<endl;
-                    //处理传进来的边
+                    //处理传进来的边(第一条边)
                     if(query_node_map.empty()){
                         GmatV_Node node;
                         node.vid_pair = id_pair;
                         node.uid_pair = temp_uid_pair;
                         query_node_map[temp_uid_pair].push_back(node);
-                        uid_pair_pre = temp_uid_pair;
+                        uid_pair_pre = temp_uid_pair;    //这条条边就是下一次处理的pre边
                         continue;
                     }
 
 
 
 
-                    query_node_map[temp_uid_pair];  //占位置
+
 
                     //处理不是第一条边的边
                     //遍历上一次处理的那个uid_pair下面的id_pair向量
+                    query_node_map[temp_uid_pair];  //占位置
+
                     for(auto &pre_item:query_node_map[uid_pair_pre]){
 
                         //获取前面所有的uid_vid_map
-                        auto *temp_parent = &pre_item;
                         auto *temp_p = &pre_item;
 
                         temp_uid_vid.clear();
@@ -707,7 +507,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                         }
 
 
-                        //1有2有
+                        //1有2有（uid1在temp_uid_vid中出现了，uid2也在temp_uid_vid中出现了）
                         if(temp_uid_vid.find(temp_uid_pair.first) != temp_uid_vid.end() && temp_uid_vid.find(temp_uid_pair.second) != temp_uid_vid.end()){
                             auto first_vid = temp_uid_vid[temp_uid_pair.first];
                             auto second_vid = temp_uid_vid[temp_uid_pair.second];
@@ -718,7 +518,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                                 node.uid_pair = temp_uid_pair;
                                 node.vid_pair = {first_vid,second_vid};
                                 query_node_map[temp_uid_pair].push_back(node);
-                                query_node_map[temp_uid_pair].back().parent = &pre_item;
+                                query_node_map[temp_uid_pair].back().parent = &pre_item;  //最后一个（back()函数）压进去的点，就是刚才处理的点
                             }
                             continue;
                         }
@@ -734,11 +534,13 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                                     vector<int> temp_G_neighbor_id;
                                     vector<int> temp_G_neighbor_label;
 
+                                    //获取该uid在Q中的所有邻居的id和label
                                     for(auto &another_Q_neighbor_id_item:Q[temp_uid_pair.second].two_way_neighbor_id){
                                         temp_Q_neighbor_id.push_back(another_Q_neighbor_id_item);
                                         temp_Q_neighbor_label.push_back(Q_Uid_Ulabel[another_Q_neighbor_id_item]);
                                     }
 
+                                    //获取该vid在G中的所有邻居的id和label
                                     for(auto &another_G_neighbor_id_item:G[G_neighbor_id_item].two_way_neighbor_id){
                                         temp_G_neighbor_id.push_back(another_G_neighbor_id_item);
                                         temp_G_neighbor_label.push_back(G_Vid_Vlabel[another_G_neighbor_id_item]);
@@ -748,9 +550,10 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                                     bool is_Q_neighbor_label_in_G_neighbor_label = true;
                                     bool is_Q_neighbor_id_in_G_neighbor_id = true;
 
+                                    //检查这个顶点的所有在Q中邻居的label集合，是否“都”能在这个顶点的所有在G中邻居的label集合中找到
                                     for(auto &Q_neighbor_label_item:temp_Q_neighbor_label){
                                         if(find(temp_G_neighbor_label.begin(),temp_G_neighbor_label.end(),Q_neighbor_label_item) == temp_G_neighbor_label.end()){
-                                            is_Q_neighbor_label_in_G_neighbor_label = false;
+                                            is_Q_neighbor_label_in_G_neighbor_label = false;   //如果有一个找不到，就把标志置false
                                             break;
                                         }
                                     }
@@ -850,11 +653,11 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
                         }
                     }
 
-                    if(query_node_map[temp_uid_pair].empty()){
+                    if(query_node_map[temp_uid_pair].empty()){  //如果此次处理后，query_node_map[temp_uid_pair]里面没有东西，说明匹配失败
                         break;
                     }
 
-                    uid_pair_pre = temp_uid_pair;
+                    uid_pair_pre = temp_uid_pair;    //如果没有执行上面的那个break，说明就目前来说没有匹配失败，就让当前的pair成为下一次处理的pre_pair
                 }
 
 
@@ -862,19 +665,19 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
                 is_match = true;
                 for(auto &map_item:query_node_map){
-                    if(map_item.second.empty()){
+                    if(map_item.second.empty()){   //如果query_node_map里面没有空着的点，说明至少有一条路径能够匹配成功，反之则否
                         is_match = false;
                         break;
                     }
                 }
 
                 if(is_match){
-//                    cout << id_pair.first <<" -> " << id_pair.second << " Matched !   Q : " << affected_Q_item<<endl;
                     pair<int,int> last_query_id_pair = {temp_queryInd_uid.back().first,temp_queryInd_uid.back().second};
                     match_num = match_num + query_node_map[last_query_id_pair].size();
+                    Match_Num_Map[affected_Q_item] = Match_Num_Map[affected_Q_item] + query_node_map[last_query_id_pair].size();
+//                    cout << id_pair.first <<" -> " << id_pair.second << " Matched !   Q : " << affected_Q_item<<endl;
 //                    cout << "this edge matches : " << query_node_map[last_query_id_pair].size() <<endl;
 //                    print_match_tree(query_node_map,last_query_id_pair);
-                    Match_Num_Map[affected_Q_item] = Match_Num_Map[affected_Q_item] + query_node_map[last_query_id_pair].size();
 //                    cout <<endl;
                 }
             }
@@ -892,78 +695,53 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
 //****************************************************************
 //加入更新流，并更新G_matV
-unsigned long long update_G_matV(const string& path_of_stream){
+unsigned long long update_edge(){
     unsigned long long match_num;
-    ifstream infile;
-    char single_data;
-    int id1,id2,weight;
-
-
     pair<int,int> id_pair,reverse_id_pair;   //保存从stream读取的边对(里面是V_id)
     pair<int,int> label_pair,reverse_label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
 
-    infile.open(path_of_stream);  //打开更新流文件
+    for(auto &update_item:S){  //遍历所有的更新边
+        int id1 = update_item.first;
+        int id2 = update_item.second;
 
-    if(!infile){
-        cerr << "Failed To Stream Graph" << endl;  //cerr是std中的标准错误输出（和cout有区别）
-        return -1;
-    }
+        id_pair = {id1,id2};   //保存从stream读取的边对
+        reverse_id_pair = {id2,id1};
+        label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
+        reverse_label_pair = {G_Vid_Vlabel[id_pair.second],G_Vid_Vlabel[id_pair.first]};
 
-    while(infile >> single_data){
-        if(single_data=='e'){
-            infile >> id1 >> id2 >> weight;
-            id_pair = {id1,id2};   //保存从stream读取的边对
-            reverse_id_pair = {id2,id1};
-            label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
-            reverse_label_pair = {G_Vid_Vlabel[id_pair.second],G_Vid_Vlabel[id_pair.first]};
+        //把G图里面的邻居情况一起更新了
+        if(std::find(G[id1].two_way_neighbor_id.begin(), G[id1].two_way_neighbor_id.end(), id2) == G[id1].two_way_neighbor_id.end()){
+            G[id1].two_way_neighbor_id.push_back(id2);
+        }
 
-            //更新GmatV的同时，也把G图里面的邻居情况一起更新了
-            if(std::find(G[id1].two_way_neighbor_id.begin(), G[id1].two_way_neighbor_id.end(), id2) == G[id1].two_way_neighbor_id.end()){
-                G[id1].two_way_neighbor_id.push_back(id2);
+        if(std::find(G[id2].two_way_neighbor_id.begin(), G[id2].two_way_neighbor_id.end(), id1) == G[id2].two_way_neighbor_id.end()){
+            G[id2].two_way_neighbor_id.push_back(id1);
+        }
+
+        //此处开始检查是否有匹配
+        auto it = edgeInd.find(label_pair);
+        auto reverse_it = edgeInd.find(reverse_label_pair);
+
+        if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
+            if((*it).first.first == (*it).first.second){
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
+                match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
+            } else{
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
             }
-
-            if(std::find(G[id2].two_way_neighbor_id.begin(), G[id2].two_way_neighbor_id.end(), id1) == G[id2].two_way_neighbor_id.end()){
-                G[id2].two_way_neighbor_id.push_back(id1);
-            }
-
-            //此处开始更新GmatV
-            auto it = edgeInd.find(label_pair);
-            auto reverse_it = edgeInd.find(reverse_label_pair);
-
-            if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
-                if((*it).first.first == (*it).first.second){
+        } else{      //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
+            if(reverse_it != edgeInd.end()){
+                if((*reverse_it).first.first == (*reverse_it).first.second){
                     match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
                     match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
                 } else{
-                    auto ik = find(G_matV[label_pair].begin(),G_matV[label_pair].end(),id_pair);
-                    if(ik == G_matV[label_pair].end()){     //如果没有重复的，则插入
-                        G_matV[label_pair].push_back(id_pair);
-                    }
-//                    cout << "Update Successfully : " << id_pair.first << " -> " << id_pair.second <<endl;
-                    match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
+                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
                 }
-
-
-            } else{          //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
-                if(reverse_it != edgeInd.end()){
-                    if((*reverse_it).first.first == (*reverse_it).first.second){
-                        match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
-                        match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
-                    } else{
-                        auto ik = find(G_matV[reverse_label_pair].begin(),G_matV[reverse_label_pair].end(),reverse_id_pair);
-                        if(ik == G_matV[reverse_label_pair].end()){     //如果没有重复的，则插入
-                            G_matV[reverse_label_pair].push_back(reverse_id_pair);
-                        }
-//                        cout << "Update Successfully : " << reverse_id_pair.first << " -> " << reverse_id_pair.second <<endl;
-                        match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
-                    }
-                }
-
             }
+
         }
     }
 
-    infile.close();
     return match_num;
 }
 
@@ -973,51 +751,43 @@ unsigned long long update_G_matV(const string& path_of_stream){
 
 
 
-
+//主程序入口
 int main(){
-    cout << "########################################################" <<endl;
-//    string path_of_data_graph = R"(E:\GraphQuery C++\TestData\data-graph.txt)";
-//    string path_of_query_graph = R"(E:\GraphQuery C++\TestData\multi-query.txt)";
-//    string path_of_stream = R"(E:\GraphQuery C++\TestData\stream.txt)";
-//
+    cout <<"################################"<<endl;
+    cout << "Loading Data ..." <<endl;
+
     string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
     string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";  //multi
-    string path_of_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
+    string path_of_update_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
 
-//    string path_of_data_graph = R"(E:\GraphQuery C++\Data2\data-graph.txt)";
-//    string path_of_query_graph = R"(E:\GraphQuery C++\Data2\multi-query.txt)";
-//    string path_of_stream = R"(E:\GraphQuery C++\Data2\stream.txt)";
-
-    inputG(path_of_data_graph);
-    inputQ(path_of_query_graph);
-
-     cout << "********************************************************" <<endl;
+    inputG(path_of_data_graph);  //读取数据图
+    inputQ(path_of_query_graph);  //读取查询图
+    inputS(path_of_update_stream); //读取更新图（先把更新图保存起来，避免后期频繁IO操作读取文件）
 
     create_edge_pair_vector();  //创建边对向量
-
-    create_Pi_chain();    //创建Pi链表
-
-    cout << "********************************************************" <<endl;
-
-    create_rootInd();   //创建rootInd索引
 
     create_queryInd();  //创建queryInd索引
 
     create_edgeInd();  //创建edgeInd索引
 
-    create_G_matV();   //创建物化视图
+    cout <<"################################"<<endl;
 
-    cout << "********************************************************" <<endl;
+    cout << endl;
 
-    unsigned long long total_match_num = update_G_matV(path_of_stream);  //添加更新边，并返回total_match_num
+    cout <<"################################"<<endl;
+    cout << "Matching ..." <<endl;
+
+    unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+
+
+    cout << "Print Result : " <<endl;
+    cout <<"################################"<<endl;
 
     for(auto &it:Match_Num_Map){
-        cout << "Q_"<< it.first << " : " <<it.second <<endl;
+        cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
     }
 
     cout << "Total Match Num Is : " << total_match_num << endl;
-
-
 
     return 0;
 }
