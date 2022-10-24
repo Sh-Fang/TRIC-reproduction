@@ -109,6 +109,7 @@ unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应
 vector<QNode> Q;   //初始化多重查询图
 unordered_map<int,int> Q_Uid_Ulabel;
 vector<pair<int,int>> S; //保存更新图
+vector<pair<int,int>> D; //保存删除图
 
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
 
@@ -228,7 +229,7 @@ void inputS(const string& path_of_update_stream){
     infile.open(path_of_update_stream);  //打开查询图文件
 
     if(!infile){
-        cerr << "Failed To Open Stream" << endl;  //cerr是std中的标准错误输出（和cout有区别）
+        cerr << "Failed To Open Update Stream" << endl;  //cerr是std中的标准错误输出（和cout有区别）
         return;
     }
 
@@ -240,6 +241,32 @@ void inputS(const string& path_of_update_stream){
         }
     }
     cout << "Update Stream Loading Successfully" << endl;
+}
+
+
+
+
+void inputD(const string& path_of_del_stream){
+    char single_data;  //定义单个字符的变量，用来储存读入的数据
+    ifstream infile;
+    int e_id1,e_id2,e_weight;  //用于保存e和v开头的数据
+    pair<int,int> edge_node;
+
+    infile.open(path_of_del_stream);  //打开查询图文件
+
+    if(!infile){
+        cerr << "Failed To Open Del Stream" << endl;  //cerr是std中的标准错误输出（和cout有区别）
+        return;
+    }
+
+    while(infile >> single_data){
+        if(single_data=='e'){
+            infile >> e_id1 >> e_id2 >> e_weight;
+            edge_node = {e_id1,e_id2};
+            D.push_back(edge_node);
+        }
+    }
+    cout << "Del Stream Loading Successfully" << endl;
 }
 
 
@@ -362,14 +389,50 @@ void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pa
 
 
 
+
+
+
+void work_before_del(){
+    string match_mode = "delete";
+    unsigned long long match_num;
+    pair<int,int> id_pair,reverse_id_pair;   //保存从stream读取的边对(里面是V_id)
+    pair<int,int> label_pair,reverse_label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
+
+    for(auto &del_item:D){  //遍历所有的删除边
+        int id1 = del_item.first;
+        int id2 = del_item.second;
+
+        //更新G图里面的邻居
+        auto finder1 = find(G[id1].two_way_neighbor_id.begin(), G[id1].two_way_neighbor_id.end(),id2);
+        if(finder1 != G[id1].two_way_neighbor_id.end()){   //如果找到了这个id2邻居，那么就删除他
+            G[id1].two_way_neighbor_id.erase(finder1);
+        }
+
+        auto finder2 = find(G[id2].two_way_neighbor_id.begin(), G[id2].two_way_neighbor_id.end(), id1);
+        if(finder2 != G[id2].two_way_neighbor_id.end()){
+            G[id2].two_way_neighbor_id.erase(finder2);
+        }
+    }
+}
+
+
+
 //****************************************************************
-//判断子图是否在大图中匹配
-unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){
+//判断传进来的边能否在G图中找到匹配，如果能，能匹配多少次
+unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair,const string& mode){
 
     unsigned long long match_num = 0 ;   //保存总共能够匹配的数量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
     vector<pair<int,int>> temp_queryInd_uid;  //临时保存从queryInd里面遍历得到的一条链表
     vector<pair<int,int>> temp_queryInd_uid_backup;   //temp_queryInd_uid的备份
+
+    if(mode == "delete"){
+        if(find(G[id_pair.first].two_way_neighbor_id.begin(),G[id_pair.first].two_way_neighbor_id.end(),id_pair.second) == G[id_pair.first].two_way_neighbor_id.end()){
+//            cout <<"Already Deleted"<<endl;
+            match_num = 0;
+            return match_num;
+        }
+    }
 
 
     for(auto &it:edgeInd[label_pair]){   //遍历所有edgeInd里面的向量
@@ -693,9 +756,69 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
 
 
+unsigned long long del_edge(){
+    string match_mode = "delete";
+    unsigned long long match_num;
+    pair<int,int> id_pair,reverse_id_pair;   //保存从stream读取的边对(里面是V_id)
+    pair<int,int> label_pair,reverse_label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
+
+    for(auto &del_item:D){  //遍历所有的删除边
+        int id1 = del_item.first;
+        int id2 = del_item.second;
+
+        id_pair = {id1,id2};   //保存从D读取的边对
+        reverse_id_pair = {id2,id1};
+        label_pair = {G_Vid_Vlabel[id_pair.first],G_Vid_Vlabel[id_pair.second]}; //查询边对所对应的label
+        reverse_label_pair = {G_Vid_Vlabel[id_pair.second],G_Vid_Vlabel[id_pair.first]};
+
+        //此处开始检查是否有匹配
+        auto it = edgeInd.find(label_pair);
+        auto reverse_it = edgeInd.find(reverse_label_pair);
+
+        if(it != edgeInd.end()){   //说明待删除的边在edgeInd里面，满足删除的要求
+            if((*it).first.first == (*it).first.second){   //对于两个label都是相同的边
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
+                match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
+            } else{
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
+            }
+        } else{      //如果待插入的边不在edgeInd里面，检查反着以后的边是不是在edgeInd里面
+            if(reverse_it != edgeInd.end()){
+                if((*reverse_it).first.first == (*reverse_it).first.second){  //对于两个label都是相同的边
+                    match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
+                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
+                } else{
+                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
+                }
+            }
+
+        }
+
+
+
+        //更新G图里面的邻居
+        auto finder1 = find(G[id1].two_way_neighbor_id.begin(), G[id1].two_way_neighbor_id.end(),id2);
+        if(finder1 != G[id1].two_way_neighbor_id.end()){   //如果找到了这个id2邻居，那么就删除他
+            G[id1].two_way_neighbor_id.erase(finder1);
+        }
+
+        auto finder2 = find(G[id2].two_way_neighbor_id.begin(), G[id2].two_way_neighbor_id.end(), id1);
+        if(finder2 != G[id2].two_way_neighbor_id.end()){
+            G[id2].two_way_neighbor_id.erase(finder2);
+        }
+    }
+
+    return match_num;
+}
+
+
+
+
+
 //****************************************************************
 //加入更新流，并更新G_matV
 unsigned long long update_edge(){
+    string match_mode = "update";
     unsigned long long match_num;
     pair<int,int> id_pair,reverse_id_pair;   //保存从stream读取的边对(里面是V_id)
     pair<int,int> label_pair,reverse_label_pair;  //保存从stream读取的边对(里面是V_id对应的Label_id)
@@ -724,18 +847,18 @@ unsigned long long update_edge(){
 
         if(it != edgeInd.end()){   //说明待插入的边在edgeInd里面，满足插入的要求
             if((*it).first.first == (*it).first.second){
-                match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
-                match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
+                match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
             } else{
-                match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
+                match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
             }
         } else{      //如果待插入的边不在edgeInd里面，那么就不能插入GmatV里面
             if(reverse_it != edgeInd.end()){
                 if((*reverse_it).first.first == (*reverse_it).first.second){
-                    match_num = match_num + subgraph_total_match_num(label_pair,id_pair);
-                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
+                    match_num = match_num + subgraph_total_match_num(label_pair,id_pair,match_mode);
+                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
                 } else{
-                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
+                    match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair,match_mode);
                 }
             }
 
@@ -757,12 +880,14 @@ int main(){
     cout << "Loading Data ..." <<endl;
 
     string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
-    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";  //multi
+    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";
     string path_of_update_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
+    string path_of_del_stream = R"(E:\Desktop\GraphQuery C++\Data\deletion.graph)";
 
     inputG(path_of_data_graph);  //读取数据图
     inputQ(path_of_query_graph);  //读取查询图
     inputS(path_of_update_stream); //读取更新图（先把更新图保存起来，避免后期频繁IO操作读取文件）
+    inputD(path_of_del_stream);  //读取删除图（先把更新图保存起来，避免后期频繁IO操作读取文件）
 
     create_edge_pair_vector();  //创建边对向量
 
@@ -774,20 +899,34 @@ int main(){
 
     cout << endl;
 
+//    cout <<"################################"<<endl;
+//    cout << "Matching ..." <<endl;
+//
+//    unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+//
+//
+//    cout << "Print Result : " <<endl;
+//    cout <<"################################"<<endl;
+//
+//    for(auto &it:Match_Num_Map){
+//        cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
+//    }
+//
+//    cout << "Total Match Num Is : " << total_match_num << endl;
+
+
     cout <<"################################"<<endl;
-    cout << "Matching ..." <<endl;
+    Match_Num_Map.clear();
+    cout << "Delete ..." <<endl;
 
-    unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+    unsigned long long del_total_match_num = del_edge();  //删除边，并返回del_total_match_num
 
-
-    cout << "Print Result : " <<endl;
-    cout <<"################################"<<endl;
 
     for(auto &it:Match_Num_Map){
         cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
     }
 
-    cout << "Total Match Num Is : " << total_match_num << endl;
+    cout << "Del Total Match Num Is : " << del_total_match_num << endl;
 
     return 0;
 }
