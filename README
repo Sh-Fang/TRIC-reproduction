@@ -1,4 +1,7 @@
 #说明
 Data文件夹是main.cpp用到的数据文件
-Tools文件夹存放的是工具程序，具体用法见程序开头注释
+Tools文件夹存放的是工具程序
+- combine_Q.cpp：是把多个Q整合为一个大Q
+- PerValidUpdateTimeConsume.ipynb：是将每次有效更新边的匹配用时，用plt画出来
+- GraphView.html：使用了蚂蚁G6图可视化引擎，将Q_multi可视化
 main.cpp是程序文件，在根目录下，为单文件。

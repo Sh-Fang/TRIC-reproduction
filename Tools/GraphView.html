@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Tutorial Demo</title>
+  </head>
+  <body>
+    <!-- /* 图的画布容器 */ -->
+    <div id="mountNode"></div>
+    <input type="file" id="file"/>
+    <button onclick="show_graph()">显示图谱</button>
+
+    <!-- /* 引入 G6 */ -->
+    <script src="https://gw.alipayobjects.com/os/lib/antv/g6/4.3.11/dist/g6.min.js"></script>
+
+    <script>
+      // 加载图数据
+      var txt_data = [];
+      var num_txt_data = [];
+      var single_date;
+      var input = document.querySelector('input');
+      input.addEventListener('change', function() {
+        if(this.files.length){
+          let file = this.files[0];
+          let reader = new FileReader();
+          reader.onload = function(){
+            txt_data = this.result
+            txt_data = txt_data.trim().split(/\s+/)
+
+          };
+          reader.readAsText(file);
+        }
+        console.log("数据加载完成")
+      }, false);
+
+
+      // 定义渲染所需数据
+      var data = {
+          nodes:[],
+          edges:[]
+      }
+      
+
+      //button按钮渲染图
+      function show_graph(){
+        var _id = [];
+        var _label = []
+        var _source = [];
+        var _target = [];
+
+        for(let i = 0 ; i < txt_data.length ; i++){
+
+          if(txt_data[i] == 'v'){
+            _id.push(txt_data[i+1])
+            _label.push(txt_data[i+2])
+          }
+
+          if(txt_data[i] == 'e'){
+            _source.push(txt_data[i+1]);
+            _target.push(txt_data[i+2])
+          }
+        }
+
+
+
+        for(var i = 0 ; i < _id.length ;i++){
+          data.nodes.push({
+            id:_id[i],
+            label:_label[i]
+          })
+        }
+
+        for(let j = 0 ; j < _source.length ; j++){
+          data.edges.push({
+            source:_source[j],
+            target:_target[j]
+          })
+        }
+
+        console.log("数据处理完成，开始绘图")
+
+        // 创建 G6 图实例
+        const graph = new G6.Graph({
+          container: 'mountNode', // 指定图画布的容器 id，与第 9 行的容器对应
+          // 画布宽高
+          width: 1800,
+          height: 1500,
+          layout:{
+            type: 'fruchterman', // 指定为力导向布局
+            preventOverlap: true, // 防止节点重叠
+            nodeSize: 40,        // 节点大小，用于算法中防止节点重叠时的碰撞检测。由于已经在上一节的元素配置中设置了每个节点的 size 属性，则不需要在此设置 nodeSize。
+            linkDistance: 300, // 指定边距离为100
+          },
+          modes: {
+            default: ['drag-canvas', 'zoom-canvas', 'drag-node'], // 允许拖拽画布、放缩画布、拖拽节点
+          },
+        });
+
+        
+
+        // 读取数据
+        graph.data(data);
+        console.log("数据就绪，开始渲染...")
+        // 渲染图
+        graph.render();
+
+      }
+      
+    </script>
+  </body>
+</html>

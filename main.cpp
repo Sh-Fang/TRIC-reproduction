@@ -5,6 +5,10 @@
 #include <unordered_map>  //无序哈希表map
 #include <map>
 #include <utility>  //pair库
+#include <ctime>
+#include <chrono>
+#include <numeric>
+
 
 using namespace std;
 
@@ -117,6 +121,8 @@ map<pair<int,int>,vector<int>> edgeInd;   //无序map不能使用pair作为key�
 unordered_map<int,vector<EdgePairNode>> queryInd;   //key是Qid，value是n节点
 
 map<unsigned long long,unsigned long long> Match_Num_Map;   //记录不同Q对应的匹配次数
+
+vector<double> PerUpdateTime;
 //*****************************************************************
 
 
@@ -365,7 +371,7 @@ void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pa
 //****************************************************************
 //判断子图是否在大图中匹配
 unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair){
-
+    auto update_start = std::chrono::high_resolution_clock::now();
     unsigned long long match_num = 0 ;   //保存总共能够匹配的数量
     vector<int> affected_Q;   //暂时保存本次更新中受影响的Q
     vector<pair<int,int>> temp_queryInd_uid;  //临时保存从queryInd里面遍历得到的一条链表
@@ -683,6 +689,10 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
             }
         }
     }
+    auto update_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::ratio<1, 1000>> diff = update_end - update_start;
+    auto iii = diff.count();
+    PerUpdateTime.push_back(diff.count());
 
     return match_num;
 
@@ -738,7 +748,6 @@ unsigned long long update_edge(){
                     match_num = match_num + subgraph_total_match_num(reverse_label_pair,reverse_id_pair);
                 }
             }
-
         }
     }
 
@@ -756,19 +765,31 @@ int main(){
     cout <<"################################"<<endl;
     cout << "Loading Data ..." <<endl;
 
-    string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
-    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";  //multi
-    string path_of_update_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
+    string path_of_data_graph = R"(E:\Desktop\TRIC_Plus-d2525e6f1af405c17f026d969ac2832fe81d03c3\Data\data.graph)";
+    string path_of_query_graph = R"(E:\Desktop\TRIC_Plus-d2525e6f1af405c17f026d969ac2832fe81d03c3\Data\Q_multi)";  //multi
+    string path_of_update_stream = R"(E:\Desktop\TRIC_Plus-d2525e6f1af405c17f026d969ac2832fe81d03c3\Data\insertion.graph)";
+
+    time_t load_data_start = clock();
 
     inputG(path_of_data_graph);  //读取数据图
     inputQ(path_of_query_graph);  //读取查询图
     inputS(path_of_update_stream); //读取更新图（先把更新图保存起来，避免后期频繁IO操作读取文件）
+
+    time_t index_start = clock();
 
     create_edge_pair_vector();  //创建边对向量
 
     create_queryInd();  //创建queryInd索引
 
     create_edgeInd();  //创建edgeInd索引
+
+    time_t index_end = clock();
+
+    time_t load_data_end = clock();
+
+
+
+
 
     cout <<"################################"<<endl;
 
@@ -777,7 +798,13 @@ int main(){
     cout <<"################################"<<endl;
     cout << "Matching ..." <<endl;
 
+    time_t match_start = clock();
+
     unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+
+    time_t match_end = clock();
+
+
 
 
     cout << "Print Result : " <<endl;
@@ -789,5 +816,27 @@ int main(){
 
     cout << "Total Match Num Is : " << total_match_num << endl;
 
+    cout <<"################################"<<endl;
+
+    cout << "Load Data Time : " << double(load_data_end - load_data_start) / CLOCKS_PER_SEC << " s " <<endl;
+    cout << "Indexing Time : " << double(index_end - index_start) << " ms " <<endl;
+    cout << "Matching Time : " << double(match_end - match_start) / CLOCKS_PER_SEC << " s " <<endl;
+
+    ofstream time_out;
+    time_out.open(R"(E:\Desktop\TRIC_Plus-d2525e6f1af405c17f026d969ac2832fe81d03c3\PerValidUpdateTimeConsume.txt)");
+    for(auto & i:PerUpdateTime){
+       time_out << i <<" ";
+    }
+    time_out.close();
+
+    auto iii = std::min_element(PerUpdateTime.begin(), PerUpdateTime.end());
+    auto jjj = std::max_element(PerUpdateTime.begin(), PerUpdateTime.end());
+    cout << "Min Matching Time : " << *iii  << " ms" <<endl;
+    cout << "Max Matching Time : " << *jjj  << " ms" <<endl;
+
+    auto sum = std::accumulate(std::begin(PerUpdateTime), std::end(PerUpdateTime), 0.0);
+    auto mean =  sum / PerUpdateTime.size(); //均值
+
+    cout << "Per Update Matching Time : " << mean << " ms " <<endl;
     return 0;
 }
