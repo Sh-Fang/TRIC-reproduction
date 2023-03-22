@@ -1,0 +1,39 @@
+Q_0:
+39 positive matches.
+0 negative matches.
+
+Q_1
+64 positive matches.
+0 negative matches.
+
+Q_2
+26 positive matches.
+0 negative matches.
+
+Q_3
+20 positive matches.
+0 negative matches.
+
+Q_4
+40 positive matches.
+0 negative matches.
+
+Q_5
+44 positive matches.
+0 negative matches.
+
+Q_6
+36 positive matches.
+0 negative matches.
+
+Q_7
+40 positive matches.
+0 negative matches.
+
+Q_8
+22 positive matches.
+0 negative matches.
+
+Q_9
+70 positive matches.
+0 negative matches.
