@@ -1,136 +1,40 @@
 #include <iostream>
-#include <fstream>  //文件操作库
-#include <algorithm>  //find()库
-#include <vector>   //向量库
-#include <unordered_map>  //无序哈希表map
-#include <map>
-#include <utility>  //pair库
+#include "basic_struct.h"
+#include <unistd.h> // 使用chdir()
 
 using namespace std;
 
-
-
-//**************类的定义*********************************************
-//G为无向图
-class GNode{
-public:
-    int v_label;  //储存节点字母
-    int v_id;  //节点id
-    vector<int> two_way_neighbor_id; //双向保存邻居节点id
-public:
-    GNode(){
-        this->v_label = -1;
-        this->v_id = -1;
-    }
-    void save_G_node_info(int id,int label){   //储存节点信息
-        this->v_label = label;
-        this->v_id = id;
-    }
-    void add_G_neighbor(int id){   //添加邻居节点
-        this->two_way_neighbor_id.push_back(id);
-    }
-};
-
-
-
+//***声明函数**************************************************************
+void inputG(const string& path_of_data_graph);
+void inputQ(const string& path_of_query_graph);
+void inputS(const string& path_of_update_stream);
+void inputD(const string& path_of_del_stream);
+void create_edge_pair_vector();
+void create_queryInd();
+void create_edgeInd();
+void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pair<int,int> &last_pair);
+void work_before_del();
+unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,int> id_pair,const string& mode);
+unsigned long long del_edge();
+unsigned long long update_edge();
 //*****************************************************************
-//Q为有向图
-class QNode{
-public:
-    int u_label;  //储存节点字母
-    int u_id;  //节点id
-    int Q_id;
-    vector<int> one_way_neighbor_id; //存邻居节点id
-    vector<int> two_way_neighbor_id;  //双向邻居节点
-public:
-    QNode(){
-        this->u_id =  this->Q_id = this->u_label =  -1 ;
-    }
-
-    void save_Q_node_info(int local_Q_id,int local_u_id,int local_u_label){   //储存节点信息
-        this->Q_id = local_Q_id;
-        this->u_label = local_u_label;
-        this->u_id = local_u_id;
-    }
-
-    void add_Q_neighbor(int local_u_id){   //添加邻居节点
-        this->one_way_neighbor_id.push_back(local_u_id);
-    }
-};
 
 
-
-//*****************************************************************
-//边对节点
-class EdgePairNode{
-public:
-    int Q_id;      //即：这条边属于哪个Q
-    int first_node_in_degree;   //边对中第一个节点的入度 <D,E>
-    int second_node_out_degree; //边对中第二个节点的出度
-    pair<int,int> label_pair;
-    pair<int,int> id_pair;
-    vector<EdgePairNode*> child;   //树中的指针
-public:
-    EdgePairNode(){
-        this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
-        this->second_node_out_degree = 0;
-        this->Q_id = -1;
-    }
-
-
-    void clear(){
-        this->first_node_in_degree = 0;  //默认入度为0，后面只需要管那些入度不为0的，不需要再让入度本身为0的节点再进行一次赋0操作
-        this->second_node_out_degree = 0;
-        this->Q_id = -1;
-        this->child.clear();
-    }
-};
-
-
-//*****************************************************************
-//
-class GmatV_Node{
-public:
-    pair<int,int> vid_pair;
-    pair<int,int> uid_pair;
-    vector<GmatV_Node*> child;
-    GmatV_Node *parent;
-
-public:
-    GmatV_Node(){
-        parent = nullptr;
-    }
-};
-
-
-//*****************************************************************
+//**************定义所需结构***************************************************
 vector<GNode> G;   //初始化数据图:G用向量存
-unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点v_label和v_id的对应关系(key是V_id)
+unordered_map<int,int> G_Vid_Vlabel;   //G中所有节点的v_label和v_id的对应关系(key是v_id)
 vector<QNode> Q;   //初始化多重查询图
-unordered_map<int,int> Q_Uid_Ulabel;
+unordered_map<int,int> Q_Uid_Ulabel;  //Q中所有节点的u_label和u_id的对应关系(key是u_id)
 vector<pair<int,int>> S; //保存更新图
 vector<pair<int,int>> D; //保存删除图
-
 vector<EdgePairNode> Pairs;   //存放所有的边对（Q1和Q2的都在里面）
-
 map<pair<int,int>,vector<int>> edgeInd;   //无序map不能使用pair作为key，而有序map可以(key是label_pair，value是对应的节点的连接)
-
 unordered_map<int,vector<EdgePairNode>> queryInd;   //key是Qid，value是n节点
-
 map<unsigned long long,unsigned long long> Match_Num_Map;   //记录不同Q对应的匹配次数
 //*****************************************************************
 
 
-
-
-
-
-
-
-
-
-//**********************函数的定义*******************************************
-
+//***定义函数**************************************************************
 //加载数据图
 void inputG(const string& path_of_data_graph){
     char single_data;  //定义单个字符的变量，用来储存读入的数据
@@ -219,7 +123,8 @@ void inputQ(const string& path_of_query_graph){
 
 
 
-
+//****************************************************************
+//加载更新图
 void inputS(const string& path_of_update_stream){
     char single_data;  //定义单个字符的变量，用来储存读入的数据
     ifstream infile;
@@ -245,7 +150,8 @@ void inputS(const string& path_of_update_stream){
 
 
 
-
+//****************************************************************
+//加载删边图
 void inputD(const string& path_of_del_stream){
     char single_data;  //定义单个字符的变量，用来储存读入的数据
     ifstream infile;
@@ -313,7 +219,7 @@ void create_edge_pair_vector(){
 
 
 
-
+//****************************************************************
 //创建queryInd（用最简单的方法，直接从Pairs里面获取边对）
 void create_queryInd(){
     EdgePairNode temp_node;
@@ -332,7 +238,7 @@ void create_queryInd(){
 
 
 
-
+//****************************************************************
 //建立edgeInd索引（用最简单的方法，直接从queryInd里面获取边对）
 void create_edgeInd(){
     for(auto &pair_item:Pairs){
@@ -391,7 +297,8 @@ void print_match_tree(map<pair<int,int>,vector<GmatV_Node>> &query_node_map , pa
 
 
 
-
+//****************************************************************
+//删边前更新邻居
 void work_before_del(){
     string match_mode = "delete";
     unsigned long long match_num;
@@ -428,7 +335,7 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
     if(mode == "delete"){
         if(find(G[id_pair.first].two_way_neighbor_id.begin(),G[id_pair.first].two_way_neighbor_id.end(),id_pair.second) == G[id_pair.first].two_way_neighbor_id.end()){
-//            cout <<"Already Deleted"<<endl;
+            cout <<"Already Deleted"<<endl;
             match_num = 0;
             return match_num;
         }
@@ -755,7 +662,8 @@ unsigned long long subgraph_total_match_num(pair<int,int> label_pair,pair<int,in
 
 
 
-
+//****************************************************************
+//删边操作
 unsigned long long del_edge(){
     string match_mode = "delete";
     unsigned long long match_num;
@@ -870,24 +778,27 @@ unsigned long long update_edge(){
 
 
 
-
-
-
+//*****************************************************************
 
 //主程序入口
 int main(){
-    cout <<"################################"<<endl;
-    cout << "Loading Data ..." <<endl;
+    const char *data_path_c = R"(C:\Users\Oasis\Desktop\TRIC-reproduction-master\Data\)";
+    chdir(data_path_c);  //更改目录到当前文件夹
 
-    string path_of_data_graph = R"(E:\Desktop\GraphQuery C++\Data\data.graph)";
-    string path_of_query_graph = R"(E:\Desktop\GraphQuery C++\Data\Q_multi)";
-    string path_of_update_stream = R"(E:\Desktop\GraphQuery C++\Data\insertion.graph)";
-    string path_of_del_stream = R"(E:\Desktop\GraphQuery C++\Data\deletion.graph)";
+    string data_path = string(data_path_c);
+
+    string path_of_data_graph = data_path + R"(data.graph)";
+    string path_of_query_graph = data_path + R"(Q_multi)";
+    string path_of_update_stream = data_path + R"(insertion.graph)";
+//    string path_of_del_stream = data_path + R"(deletion.graph)";;
+
+
+    cout <<"************* Loading Data ********************"<<endl;
 
     inputG(path_of_data_graph);  //读取数据图
     inputQ(path_of_query_graph);  //读取查询图
     inputS(path_of_update_stream); //读取更新图（先把更新图保存起来，避免后期频繁IO操作读取文件）
-    inputD(path_of_del_stream);  //读取删除图（先把更新图保存起来，避免后期频繁IO操作读取文件）
+//    inputD(path_of_del_stream);  //读取删除图（先把更新图保存起来，避免后期频繁IO操作读取文件）
 
     create_edge_pair_vector();  //创建边对向量
 
@@ -895,39 +806,37 @@ int main(){
 
     create_edgeInd();  //创建edgeInd索引
 
-    cout <<"################################"<<endl;
-
     cout << endl;
 
-//    cout <<"################################"<<endl;
-//    cout << "Matching ..." <<endl;
+
+    cout <<"******************* Matching && Printing *********************"<<endl;
+
+    //正向匹配
+    unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+
+    //输出结果
+    for(auto &it:Match_Num_Map){
+        cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
+    }
+
+    cout << "Total Match Num Is : " << total_match_num << endl;
+
+
+
+//    //删边匹配
+//    cout <<"****************************"<<endl;
+//    Match_Num_Map.clear();
+//    cout << "Delete ..." <<endl;
 //
-//    unsigned long long total_match_num = update_edge();  //添加更新边，并返回total_match_num
+//    unsigned long long del_total_match_num = del_edge();  //删除边，并返回del_total_match_num
 //
-//
-//    cout << "Print Result : " <<endl;
-//    cout <<"################################"<<endl;
 //
 //    for(auto &it:Match_Num_Map){
 //        cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
 //    }
 //
-//    cout << "Total Match Num Is : " << total_match_num << endl;
+//    cout << "Del Total Match Num Is : " << del_total_match_num << endl;
 
-
-    cout <<"################################"<<endl;
-    Match_Num_Map.clear();
-    cout << "Delete ..." <<endl;
-
-    unsigned long long del_total_match_num = del_edge();  //删除边，并返回del_total_match_num
-
-
-    for(auto &it:Match_Num_Map){
-        cout << "Q_"<< it.first << " Match Num is : " <<it.second <<endl;
-    }
-
-    cout << "Del Total Match Num Is : " << del_total_match_num << endl;
-
-
+    cout <<"**************************************************"<<endl;
     return 0;
 }
